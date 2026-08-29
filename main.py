@@ -341,72 +341,72 @@ class CargadorAFD:
 
             return set(elementos)
 
-        @staticmethod
-        def crear_manual():
-            """Esta funcion se encargara de la carga manual del AFD jeje"""
-            print("\n=== CREACION MANUAL DEL AFD ===")
-            afd = AFD()
+    @staticmethod
+    def crear_manual():
+        """Esta funcion se encargara de la carga manual del AFD jeje"""
+        print("\n=== CREACION MANUAL DEL AFD ===")
+        afd = AFD()
 
-            #Ingreso obligatorio del nombre del AFD
-            while afd.nombre.strip == "":
-                afd.nombre = input("Nombre del automata: ").strip()
+        #Ingreso obligatorio del nombre del AFD
+        while afd.nombre.strip == "":
+            afd.nombre = input("Nombre del automata: ").strip()
 
-                #Si el nombre se ingresa como vacio..
-                if afd.nombre == "":
-                    print("El nomre no puede estar vacio.")
+            #Si el nombre se ingresa como vacio..
+            if afd.nombre == "":
+                print("El nomre no puede estar vacio.")
 
-            #Extraemos los estados
-            afd.estados = CargadorAFD.pedir_conjunto(
-                "Estados separados por coma (ej. q0,q1,q2): "
+        #Extraemos los estados
+        afd.estados = CargadorAFD.pedir_conjunto(
+            "Estados separados por coma (ej. q0,q1,q2): "
+        )
+
+        #Extraemos el alfabeto
+        afd.alfabeto = CargadorAFD.pedir_conjunto(
+            "Simbolos del alfabeto separados por coma (ej. a,b): "
+        )
+
+        while True:
+            #Iniciamos con el estado inicial
+            inicial = input("Estado inicial: ").strip()
+
+            #Si el estado inial si se encuentra en los estados
+            if inicial in afd.estados:
+                afd.estado_inicial = inicial
+
+            #Si no esxiste a los estados
+            print("El estado inicial depe pertenecer al conjunto de estados.")
+        while True:
+            #Estados finales
+            finales = CargadorAFD.pedir_conjunto(
+                "Estados finales separados por coma (Enter si no hay): ",
+                permitir_vacio=True,
             )
 
-            #Extraemos el alfabeto
-            afd.alfabeto = CargadorAFD.pedir_conjunto(
-                "Simbolos del alfabeto separados por coma (ej. a,b): "
-            )
+            #Si lo estados finales son una sublista de los estados
+            if finales.issubset(afd.estados):
+                afd.estados_finales = finales
+                break
 
-            while True:
-                #Iniciamos con el estado inicial
-                inicial = input("Estado inicial: ").strip()
+            print("Todos los estados finales deben pertenecer a Q.")
+        print("\nIngrese la función de transición.")
+        print("Para cada combinación estado-símbolo indique el estado destino.\n")
 
-                #Si el estado inial si se encuentra en los estados
-                if inicial in afd.estados:
-                    afd.estado_inicial = inicial
+        # Al pedir exactamente una transición para cada combinación,
+        # el ingreso manual ya queda completo y determinista.
+        for estado in sorted(afd.estados):
+            for simbolo in sorted(afd.alfabeto):
+                while True:
+                    destino = input(
+                        "δ(" + estado + ", " + simbolo + ") = "
+                    ).strip()
 
-                #Si no esxiste a los estados
-                print("El estado inicial depe pertenecer al conjunto de estados.")
-            while True:
-                #Estados finales
-                finales = CargadorAFD.pedir_conjunto(
-                    "Estados finales separados por coma (Enter si no hay): ",
-                    permitir_vacio=True,
-                )
+                    if destino in afd.estados:
+                        afd.agregar_transicion(estado, simbolo, destino)
+                        break
 
-                #Si lo estados finales son una sublista de los estados
-                if finales.issubset(afd.estados):
-                    afd.estados_finales = finales
-                    break
+                    print("El estado destino debe pertenecer a Q.")
 
-                print("Todos los estados finales deben pertenecer a Q.")
-            print("\nIngrese la función de transición.")
-            print("Para cada combinación estado-símbolo indique el estado destino.\n")
-
-            # Al pedir exactamente una transición para cada combinación,
-            # el ingreso manual ya queda completo y determinista.
-            for estado in sorted(afd.estados):
-                for simbolo in sorted(afd.alfabeto):
-                    while True:
-                        destino = input(
-                            "δ(" + estado + ", " + simbolo + ") = "
-                        ).strip()
-
-                        if destino in afd.estados:
-                            afd.agregar_transicion(estado, simbolo, destino)
-                            break
-
-                        print("El estado destino debe pertenecer a Q.")
-
-            return afd
+        return afd
 
     @staticmethod
     def cargar_archivo(ruta):
