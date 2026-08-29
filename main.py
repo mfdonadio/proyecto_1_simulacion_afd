@@ -89,7 +89,7 @@ class AFD:
             print("-" * len(encabezado))
 
             #Vamos llenando las filas de la tabla con los estados y sus transiciones
-                for estado in estados_ordenados:
+            for estado in estados_ordenados:
                 fila = estado.ljust(ancho)
 
                 for simbolo in alfabeto_ordenado:
@@ -340,3 +340,429 @@ class CargadorAFD:
                 continue
 
             return set(elementos)
+
+        @staticmethod
+        def crear_manual():
+            """Esta funcion se encargara de la carga manual del AFD jeje"""
+            print("\n=== CREACION MANUAL DEL AFD ===")
+            afd = AFD()
+
+            #Ingreso obligatorio del nombre del AFD
+            while afd.nombre.strip == "":
+                afd.nombre = input("Nombre del automata: ").strip()
+
+                #Si el nombre se ingresa como vacio..
+                if afd.nombre == "":
+                    print("El nomre no puede estar vacio.")
+
+            #Extraemos los estados
+            afd.estados = CargadorAFD.pedir_conjunto(
+                "Estados separados por coma (ej. q0,q1,q2): "
+            )
+
+            #Extraemos el alfabeto
+            afd.alfabeto = CargadorAFD.pedir_conjunto(
+                "Simbolos del alfabeto separados por coma (ej. a,b): "
+            )
+
+            while True:
+                #Iniciamos con el estado inicial
+                inicial = input("Estado inicial: ").strip()
+
+                #Si el estado inial si se encuentra en los estados
+                if inicial in afd.estados:
+                    afd.estado_inicial = inicial
+
+                #Si no esxiste a los estados
+                print("El estado inicial depe pertenecer al conjunto de estados.")
+            while True:
+                #Estados finales
+                finales = CargadorAFD.pedir_conjunto(
+                    "Estados finales separados por coma (Enter si no hay): ",
+                    permitir_vacio=True,
+                )
+
+                #Si lo estados finales son una sublista de los estados
+                if finales.issubset(afd.estados):
+                    afd.estados_finales = finales
+                    break
+
+                print("Todos los estados finales deben pertenecer a Q.")
+            print("\nIngrese la función de transición.")
+            print("Para cada combinación estado-símbolo indique el estado destino.\n")
+
+            # Al pedir exactamente una transición para cada combinación,
+            # el ingreso manual ya queda completo y determinista.
+            for estado in sorted(afd.estados):
+                for simbolo in sorted(afd.alfabeto):
+                    while True:
+                        destino = input(
+                            "δ(" + estado + ", " + simbolo + ") = "
+                        ).strip()
+
+                        if destino in afd.estados:
+                            afd.agregar_transicion(estado, simbolo, destino)
+                            break
+
+                        print("El estado destino debe pertenecer a Q.")
+
+            return afd
+
+    @staticmethod
+    def cargar_archivo(ruta):
+        """
+        Carga el formato definido en el enunciado.
+        No utiliza librerías: la sintaxis se valida mediante funciones propias.
+        """
+        try:
+            archivo = open(ruta, "r", encoding="utf-8")
+            lineas = archivo.readlines()
+            archivo.close()
+        except Exception as error:
+            print("No fue posible abrir el archivo:", error)
+            return None
+
+        # Quitamos saltos de línea, pero conservamos líneas vacías para poder
+        # reportar errores de estructura con el número correcto de línea.
+        limpias = []
+        for linea in lineas:
+            limpias.append(linea.strip())
+
+        if len(limpias) < 6:
+            print("El archivo no contiene la estructura mínima requerida.")
+            return None
+
+        afd = AFD()
+        errores = []
+
+        # Las primeras seis secciones deben aparecer en este orden.
+        encabezados = [
+            "NOMBRE=",
+            "ESTADOS=",
+            "ALFABETO=",
+            "INICIAL=",
+            "FINALES=",
+        ]
+
+        for indice in range(5):
+            if not limpias[indice].startswith(encabezados[indice]):
+                errores.append(
+                    "Línea "
+                    + str(indice + 1)
+                    + ": se esperaba '"
+                    + encabezados[indice]
+                    + "...'."
+                )
+
+        if len(limpias) <= 5 or limpias[5] != "TRANSICIONES:":
+            errores.append("Línea 6: se esperaba exactamente 'TRANSICIONES:'.")
+
+        if len(errores) > 0:
+            print("\nSe encontraron errores de sintaxis:")
+            for error in errores:
+                print("-", error)
+            return None
+
+        # Extracción de los componentes principales.
+        afd.nombre = limpias[0][len("NOMBRE="):].strip()
+
+        estados_texto = limpias[1][len("ESTADOS="):].strip()
+        alfabeto_texto = limpias[2][len("ALFABETO="):].strip()
+        afd.estado_inicial = limpias[3][len("INICIAL="):].strip()
+        finales_texto = limpias[4][len("FINALES="):].strip()
+
+        estados, error_estados = CargadorAFD._convertir_lista_archivo(
+            estados_texto, "ESTADOS", permitir_vacio=False
+        )
+        alfabeto, error_alfabeto = CargadorAFD._convertir_lista_archivo(
+            alfabeto_texto, "ALFABETO", permitir_vacio=False
+        )
+        finales, error_finales = CargadorAFD._convertir_lista_archivo(
+            finales_texto, "FINALES", permitir_vacio=True
+        )
+
+        if error_estados is not None:
+            errores.append(error_estados)
+        if error_alfabeto is not None:
+            errores.append(error_alfabeto)
+        if error_finales is not None:
+            errores.append(error_finales)
+
+        if len(errores) > 0:
+            print("\nSe encontraron errores de sintaxis:")
+            for error in errores:
+                print("-", error)
+            return None
+
+        afd.estados = estados
+        afd.alfabeto = alfabeto
+        afd.estados_finales = finales
+
+        # Cada línea después de TRANSICIONES debe tener exactamente
+        # origen,símbolo,destino.
+        for indice in range(6, len(limpias)):
+            linea = limpias[indice]
+
+            if linea == "":
+                errores.append(
+                    "Línea " + str(indice + 1) + ": no se permiten líneas vacías."
+                )
+                continue
+
+            partes = linea.split(",")
+
+            if len(partes) != 3:
+                errores.append(
+                    "Línea "
+                    + str(indice + 1)
+                    + ": una transición debe tener formato origen,símbolo,destino."
+                )
+                continue
+
+            origen = partes[0].strip()
+            simbolo = partes[1].strip()
+            destino = partes[2].strip()
+
+            if origen == "" or simbolo == "" or destino == "":
+                errores.append(
+                    "Línea "
+                    + str(indice + 1)
+                    + ": la transición contiene campos vacíos."
+                )
+                continue
+
+            afd.agregar_transicion(origen, simbolo, destino)
+
+        if len(errores) > 0:
+            print("\nSe encontraron errores de sintaxis:")
+            for error in errores:
+                print("-", error)
+            return None
+
+        return afd
+
+    @staticmethod
+    def _convertir_lista_archivo(texto, nombre_campo, permitir_vacio):
+        """Convierte una línea separada por comas a set y controla duplicados."""
+        if texto == "":
+            if permitir_vacio:
+                return set(), None
+            return None, "El campo " + nombre_campo + " no puede estar vacío."
+
+        partes = texto.split(",")
+        elementos = []
+
+        for parte in partes:
+            elemento = parte.strip()
+
+            if elemento == "":
+                return None, (
+                    "El campo " + nombre_campo + " contiene un elemento vacío."
+                )
+
+            elementos.append(elemento)
+
+        if len(elementos) != len(set(elementos)):
+            return None, (
+                "El campo " + nombre_campo + " contiene elementos duplicados."
+            )
+
+        return set(elementos), None
+
+
+
+#==================================================== MENU PRINCIPAL DEL PROYECTO :) ===========================================================
+def mostrar_validacion(afd):
+    valido, errores = ValidadorAFD.validar(afd)
+
+    print("\n--- VALIDACIÓN DEL AFD ---")
+
+    if valido:
+        print("El autómata cumple con las validaciones estructurales del AFD.")
+
+        analisis = ValidadorAFD.analizar_estructura(afd)
+        print("Estados alcanzables:", analisis["alcanzables"])
+        print("Estados inaccesibles:", analisis["inaccesibles"])
+        print("Estados finales alcanzables:", analisis["finales_alcanzables"])
+
+        if analisis["lenguaje_posiblemente_vacio"]:
+            print("El lenguaje reconocido podría ser vacío.")
+        else:
+            print("Existe al menos un estado final alcanzable desde q0.")
+    else:
+        print("El autómata NO es válido.")
+        for error in errores:
+            print("-", error)
+
+
+def asegurar_afd_valido(afd):
+    """Valida automáticamente antes de cualquier evaluación."""
+    if afd is None:
+        print("Primero debe crear o cargar un autómata.")
+        return False
+
+    valido, errores = ValidadorAFD.validar(afd)
+
+    if not valido:
+        print("El autómata no puede procesarse porque no es válido:")
+        for error in errores:
+            print("-", error)
+        return False
+
+    return True
+
+
+def evaluar_archivo_cadenas(afd):
+    if not asegurar_afd_valido(afd):
+        return
+
+    ruta = input("Ruta del archivo de cadenas: ").strip()
+
+    try:
+        archivo = open(ruta, "r", encoding="utf-8")
+        lineas = archivo.readlines()
+        archivo.close()
+    except Exception as error:
+        print("No fue posible abrir el archivo:", error)
+        return
+
+    print("\n=== EVALUACIÓN POR LOTE ===")
+
+    for numero, linea in enumerate(lineas, start=1):
+        cadena = linea.strip()
+        print("\nCadena", numero, ":", repr(cadena))
+
+        aceptada, resultado = SimuladorAFD.evaluar(
+            afd, cadena, mostrar_traza=True
+        )
+
+        # Cuando hay un símbolo inválido, 'resultado' contiene el mensaje de error.
+        if isinstance(resultado, str) and resultado not in ("Aceptada", "Rechazada"):
+            print(resultado)
+
+
+def mostrar_historial(afd):
+    if afd is None:
+        print("Primero debe crear o cargar un autómata.")
+        return
+
+    if len(afd.historial) == 0:
+        print("\nNo hay evaluaciones registradas.")
+        return
+
+    print("\n--- HISTORIAL DE EVALUACIONES ---")
+
+    for indice, registro in enumerate(afd.historial, start=1):
+        print(
+            str(indice)
+            + ". Cadena: "
+            + repr(registro["cadena"])
+            + " | Estado final: "
+            + registro["estado_final"]
+            + " | Resultado: "
+            + registro["resultado"]
+        )
+
+
+def crear_o_cargar_otro():
+    print("\n1. Crear manualmente")
+    print("2. Cargar desde archivo")
+    opcion = input("Seleccione una opción: ").strip()
+
+    if opcion == "1":
+        return CargadorAFD.crear_manual()
+
+    if opcion == "2":
+        ruta = input("Ruta del archivo .txt: ").strip()
+        return CargadorAFD.cargar_archivo(ruta)
+
+    print("Opción inválida.")
+    return None
+
+
+def mostrar_menu():
+    print("\n" + "=" * 55)
+    print("        SIMULADOR DE AUTÓMATA FINITO DETERMINISTA")
+    print("=" * 55)
+    print("1. Crear un AFD manualmente")
+    print("2. Cargar un AFD desde un archivo .txt")
+    print("3. Mostrar la definición formal del AFD")
+    print("4. Mostrar la tabla de transición")
+    print("5. Validar la estructura del autómata")
+    print("6. Evaluar una cadena")
+    print("7. Evaluar un archivo de cadenas")
+    print("8. Consultar el historial de evaluaciones")
+    print("9. Cargar o crear otro autómata")
+    print("10. Salir")
+
+
+def main():
+    afd_actual = None
+
+    while True:
+        mostrar_menu()
+        opcion = input("Seleccione una opción: ").strip()
+
+        if opcion == "1":
+            afd_actual = CargadorAFD.crear_manual()
+            print("\nAFD creado correctamente.")
+
+        elif opcion == "2":
+            ruta = input("Ruta del archivo .txt: ").strip()
+            nuevo_afd = CargadorAFD.cargar_archivo(ruta)
+
+            if nuevo_afd is not None:
+                afd_actual = nuevo_afd
+                print("\nAFD cargado correctamente.")
+
+        elif opcion == "3":
+            if afd_actual is None:
+                print("Primero debe crear o cargar un autómata.")
+            else:
+                afd_actual.mostrar_definicion_formal()
+
+        elif opcion == "4":
+            if afd_actual is None:
+                print("Primero debe crear o cargar un autómata.")
+            else:
+                afd_actual.mostrar_tabla_transicion()
+
+        elif opcion == "5":
+            if afd_actual is None:
+                print("Primero debe crear o cargar un autómata.")
+            else:
+                mostrar_validacion(afd_actual)
+
+        elif opcion == "6":
+            if asegurar_afd_valido(afd_actual):
+                cadena = input("Ingrese la cadena a evaluar: ")
+                aceptada, resultado = SimuladorAFD.evaluar(
+                    afd_actual, cadena, mostrar_traza=True
+                )
+
+                if resultado not in ("Aceptada", "Rechazada"):
+                    print(resultado)
+
+        elif opcion == "7":
+            evaluar_archivo_cadenas(afd_actual)
+
+        elif opcion == "8":
+            mostrar_historial(afd_actual)
+
+        elif opcion == "9":
+            nuevo_afd = crear_o_cargar_otro()
+
+            if nuevo_afd is not None:
+                afd_actual = nuevo_afd
+                print("\nNuevo autómata cargado en memoria.")
+
+        elif opcion == "10":
+            print("\nPrograma finalizado.")
+            break
+
+        else:
+            print("Opción inválida. Ingrese un número del 1 al 10.")
+
+
+if __name__ == "__main__":
+    main()
