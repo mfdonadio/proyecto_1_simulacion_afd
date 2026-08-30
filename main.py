@@ -38,7 +38,7 @@ class AFD:
         
         # Booleano que indica si el AFD ha pasado validación estructural
         # (cumple con ser un AFD válido)
-        afd.validado = False
+        afd.es_valido = False
         
         # Historial de todas las cadenas evaluadas: registra resultado de cada procesamiento
         afd.historial = []
@@ -60,6 +60,9 @@ class AFD:
         """
         # Creamos una tupla (estado, símbolo) como clave del diccionario
         clave = (estado_origen, simbolo)
+
+        #Cualquier modificacion en δ invalida una validacion anterior
+        afd.es_valido = False
         
         # Verificamos si ya existe una transición para esta pareja
         if clave in afd.transiciones:
@@ -149,6 +152,39 @@ class ValidadorAFD:
     5. Ser determinista: una sola transición por (estado, símbolo)
     6. Ser completo: una transición para cada (estado, símbolo) posible
     """
+
+    _SIMBOLOS_EPSILON = {
+        "",
+        "ε",
+        "ϵ",
+        "λ",
+        "epsilon",
+        "eps",
+        "lambda",
+    }
+    @staticmethod
+    def es_simbolo_epsilon(simbolo):
+        """
+        Determina si un valor representa la cadena vacía o una
+        transición epsilon, la cual no está permitida en un AFD.
+        """
+        return simbolo.strip().lower() in ValidadorAFD._SIMBOLOS_EPSILON
+
+    @staticmethod
+    def obtener_transiciones_faltantes(afd):
+        """
+        Retorna todas las parejas (estado, símbolo) para las cuales
+        la función de transición no está definida.
+        """
+        faltantes = []
+
+        for estado in sorted(afd.estados):
+            for simbolo in sorted(afd.alfabeto):
+                if (estado, simbolo) not in afd.transiciones:
+                    faltantes.append((estado, simbolo))
+
+        return faltantes
+    
     @staticmethod
     def validar(afd):
         """
@@ -171,6 +207,21 @@ class ValidadorAFD:
         # Σ (alfabeto) no puede estar vacío
         if len(afd.alfabeto) == 0:
             errores.append("El alfabeto Σ no puede estar vacío.")
+
+        # ========== VALIDAR SÍMBOLOS DEL ALFABETO ==========
+        for simbolo in afd.alfabeto:
+            if ValidadorAFD.es_simbolo_epsilon(simbolo):
+                errores.append(
+                    "El alfabeto de un AFD no puede contener ε, "
+                    "porque representa la cadena vacía."
+                )
+            elif len(simbolo) != 1:
+                errores.append(
+                    "El símbolo '"
+                    + simbolo
+                    + "' no es válido: cada símbolo del alfabeto "
+                    + "debe tener exactamente un carácter."
+                )
         
         # ========== VALIDAR q0 (ESTADO INICIAL) ==========
         # El estado inicial q0 debe pertenecer al conjunto Q
@@ -200,9 +251,17 @@ class ValidadorAFD:
                 )
             
             # Verificar símbolo
-            if simbolo not in afd.alfabeto:
+            if ValidadorAFD.es_simbolo_epsilon(simbolo):
                 errores.append(
-                    "La transición usa el símbolo inexistente " + simbolo + "'."
+                    "No se permiten transiciones ε en un AFD: "
+                    + estado_origen
+                    + " --ε--> "
+                    + estado_destino
+                    + "."
+                )
+            elif simbolo not in afd.alfabeto:
+                errores.append(
+                    "La transición usa el símbolo inexistente '" + simbolo + "'."
                 )
             
             # Verificar estado destino
@@ -227,18 +286,16 @@ class ValidadorAFD:
             )
         
         # ========== VALIDAR COMPLETITUD ==========
-        # Un AFD completo debe tener una transición para CADA combinación
-        # de (estado, símbolo). Esto garantiza que siempre hay un siguiente estado.
-        for estado_origen in afd.estados:
-            for simbolo in afd.alfabeto:
-                if (estado_origen, simbolo) not in afd.transiciones:
-                    errores.append(
-                         "Falta la transición δ("
-                        + estado_origen
-                        + ", "
-                        + simbolo
-                        + ")."
-                    )
+        faltantes = ValidadorAFD.obtener_transiciones_faltantes(afd)
+
+        for estado_origen, simbolo in faltantes:
+            errores.append(
+                "Falta la transición δ("
+                + estado_origen
+                + ", "
+                + simbolo
+                + ")."
+            )
         
         # ========== RESULTADO FINAL ==========
         # AFD es válido si no hay errores
@@ -306,6 +363,53 @@ class ValidadorAFD:
             "finales_alcanzables": finales_alcanzables,
             "lenguaje_posiblemente_vacio": lenguaje_posiblemente_vacio,
         }
+
+
+    @staticmethod
+    def completar_con_estado_trampa(afd, nombre_base="q_trampa"):
+        """
+        Completa las transiciones faltantes enviándolas a un nuevo
+        estado trampa. El estado trampa posee ciclos para todos los
+        símbolos del alfabeto.
+
+        Retorna:
+            Tupla (nombre_estado_trampa, cantidad_transiciones_completadas)
+        """
+        faltantes = ValidadorAFD.obtener_transiciones_faltantes(afd)
+
+        if len(faltantes) == 0:
+            return None, 0
+
+        # Buscar un nombre que no colisione con estados existentes
+        nombre_trampa = nombre_base
+        contador = 1
+
+        while nombre_trampa in afd.estados:
+            nombre_trampa = nombre_base + "_" + str(contador)
+            contador += 1
+
+        # Agregar el nuevo estado a Q
+        afd.estados.add(nombre_trampa)
+
+        # Dirigir todas las transiciones faltantes hacia el estado trampa
+        for estado, simbolo in faltantes:
+            afd.agregar_transicion(
+                estado,
+                simbolo,
+                nombre_trampa
+            )
+
+        # El estado trampa debe regresar a sí mismo con cualquier símbolo
+        for simbolo in afd.alfabeto:
+            afd.agregar_transicion(
+                nombre_trampa,
+                simbolo,
+                nombre_trampa
+            )
+
+        afd.es_valido = False
+
+        return nombre_trampa, len(faltantes)
     
 class SimuladorAFD:
     """
@@ -500,10 +604,37 @@ class CargadorAFD:
         
         # ========== PASO 3: ALFABETO (Σ) ==========
         # Ejemplo: a,b
-        afd.alfabeto = CargadorAFD.pedir_conjunto(
-            "Simbolos del alfabeto separados por coma (ej. a,b): "
-        )
-        
+        while True:
+            alfabeto = CargadorAFD.pedir_conjunto(
+                "Simbolos del alfabeto separados por coma (ej. a,b): "
+            )
+
+            contiene_epsilon = False
+            simbolos_largos = []
+
+            for simbolo in alfabeto:
+                if ValidadorAFD.es_simbolo_epsilon(simbolo):
+                    contiene_epsilon = True
+                elif len(simbolo) != 1:
+                    simbolos_largos.append(simbolo)
+
+            if contiene_epsilon:
+                print(
+                    "Error: un AFD no puede contener transiciones "
+                    "epsilon o símbolos que representen la cadena vacía."
+                )
+                continue
+
+            if len(simbolos_largos) > 0:
+                print(
+                    "Error: cada símbolo debe tener exactamente un carácter."
+                )
+                print("Símbolos inválidos:", simbolos_largos)
+                continue
+
+            afd.alfabeto = alfabeto
+            break
+                
         # ========== PASO 4: ESTADO INICIAL (q0) ==========
         # Debe ser un elemento de Q
         while True:
@@ -666,6 +797,21 @@ class CargadorAFD:
             finales_texto, "FINALES", permitir_vacio=True
         )
 
+        # ========== VALIDAR SÍMBOLOS DEL ALFABETO DEL ARCHIVO ==========
+        if error_alfabeto is None:
+            for simbolo in alfabeto:
+                if ValidadorAFD.es_simbolo_epsilon(simbolo):
+                    errores.append(
+                        "Línea 3: el alfabeto de un AFD no puede contener ε."
+                    )
+                elif len(simbolo) != 1:
+                    errores.append(
+                        "Línea 3: el símbolo '"
+                        + simbolo
+                        + "' debe tener exactamente un carácter."
+                    )
+
+
         # Verificar si hubo errores al convertir
         if error_estados is not None:
             errores.append(error_estados)
@@ -716,8 +862,78 @@ class CargadorAFD:
             simbolo = coincidencia.group("simbolo")
             destino = coincidencia.group("destino")
             
-            # Agregar la transición (detectará no-determinismo automáticamente)
-            afd.agregar_transicion(origen, simbolo, destino)
+            # ========== VALIDACIÓN SEMÁNTICA DE LA TRANSICIÓN ==========
+            linea_valida = True
+            numero_linea = indice + 1
+
+            # El estado origen debe existir en Q
+            if origen not in afd.estados:
+                errores.append(
+                    "Línea "
+                    + str(numero_linea)
+                    + ": el estado origen '"
+                    + origen
+                    + "' no pertenece a Q."
+                )
+                linea_valida = False
+
+            # El símbolo no puede representar epsilon
+            if ValidadorAFD.es_simbolo_epsilon(simbolo):
+                errores.append(
+                    "Línea "
+                    + str(numero_linea)
+                    + ": no se permiten transiciones ε en un AFD."
+                )
+                linea_valida = False
+
+            # El símbolo debe tener un solo carácter
+            elif len(simbolo) != 1:
+                errores.append(
+                    "Línea "
+                    + str(numero_linea)
+                    + ": el símbolo '"
+                    + simbolo
+                    + "' debe tener exactamente un carácter."
+                )
+                linea_valida = False
+
+            # El símbolo debe pertenecer al alfabeto
+            elif simbolo not in afd.alfabeto:
+                errores.append(
+                    "Línea "
+                    + str(numero_linea)
+                    + ": el símbolo '"
+                    + simbolo
+                    + "' no pertenece al alfabeto Σ."
+                )
+                linea_valida = False
+
+            # El estado destino debe existir en Q
+            if destino not in afd.estados:
+                errores.append(
+                    "Línea "
+                    + str(numero_linea)
+                    + ": el estado destino '"
+                    + destino
+                    + "' no pertenece a Q."
+                )
+                linea_valida = False
+
+            # Si la línea contiene algún error, no se agrega a δ
+            if not linea_valida:
+                continue
+
+            # Detectar múltiples transiciones para la misma pareja
+            if not afd.agregar_transicion(origen, simbolo, destino):
+                errores.append(
+                    "Línea "
+                    + str(numero_linea)
+                    + ": existen múltiples transiciones para ("
+                    + origen
+                    + ", "
+                    + simbolo
+                    + ")."
+                )
         
         # Si hay errores, reportar y salir
         if len(errores) > 0:
@@ -807,11 +1023,60 @@ def mostrar_validacion(afd):
         else:
             print("\n✅ El autómata puede aceptar al menos una cadena.")
     else:
-        # ========== AFD INVÁLIDO ==========
+          # ========== AFD INVÁLIDO ==========
         print("Estado: INVÁLIDO")
-        print("El autómata NO cumple con las validaciones. Errores encontrados:")
+        print(
+            "El autómata NO cumple con las validaciones. "
+            "Errores encontrados:"
+        )
+
         for error in errores:
             print("-", error)
+
+        # Verificar si el único problema es la falta de transiciones
+        faltantes = ValidadorAFD.obtener_transiciones_faltantes(afd)
+
+        if len(faltantes) > 0 and len(errores) == len(faltantes):
+            print(
+                "\nEl AFD es estructuralmente consistente, "
+                "pero su función de transición está incompleta."
+            )
+            print(
+                "Puede completarse automáticamente mediante "
+                "un estado trampa."
+            )
+
+            while True:
+                respuesta = input(
+                    "¿Desea completar el AFD con un estado trampa? (s/n): "
+                ).strip().lower()
+
+                if respuesta in ("s", "si", "sí"):
+                    nombre_trampa, cantidad = (
+                        ValidadorAFD.completar_con_estado_trampa(afd)
+                    )
+
+                    print(
+                        "\nSe agregó el estado trampa:",
+                        nombre_trampa
+                    )
+                    print(
+                        "Transiciones faltantes completadas:",
+                        cantidad
+                    )
+
+                    # Mostrar nuevamente la validación actualizada
+                    mostrar_validacion(afd)
+                    return
+
+                if respuesta in ("n", "no"):
+                    print(
+                        "El AFD permanecerá incompleto y no podrá "
+                        "evaluar cadenas."
+                    )
+                    break
+
+                print("Error: responda únicamente s o n.")
 
 
 def asegurar_afd_valido(afd):
@@ -974,6 +1239,7 @@ def main():
     ╔══════════════════════════════════════════════════════════╗
     ║   BIENVENIDO AL SIMULADOR DE AFD                         ║
     ║   Lenguajes Formales - Proyecto 1                        ║
+    ║    Desarrollado por: Gerber Perez y Marco Donadio        ║
     ╚══════════════════════════════════════════════════════════╝
     """)
     
