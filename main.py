@@ -1,3 +1,5 @@
+import re  # se usa para leer y validar la sintaxis del archivo .txt del AFD
+
 """Clase AFD que representa formalmente un Autómata Finito Determinista."""
 class AFD:
     #Constructor de la clase AFD
@@ -16,8 +18,8 @@ class AFD:
         afd.transiciones = {}
 
         #Si durante una carga de AFD, se detecta la misma pareja de estado y simbolo (estado, simblo)
-        # mas de una vez, se guarda en la siguiente variable para no perder esa informacion
-        afd.transiciones_repetidas = set()
+        # mas de una vez, se guarda en la siguiente lista para no perder esa informacion
+        afd.transiciones_repetidas = []
 
         #Suponiendo que un AFD ya pudo haber pasado por el motor de validacion.
         #Inicializamos un booleano que nos indique si este, en efecto, ya fue validado o no.
@@ -26,77 +28,77 @@ class AFD:
         #Y para el historial propia del automata que estamos evaluando...
         afd.historial = []
 
-        def agregar_transicion(afd, estado_origen, simbolo, estado_destino):
-            """
-            Esta funcion agrega una transicion al diccionario de transiciones del AFD.
-            La llave del diccionario es la tupla del AFD (estado, simbolo) y el valor es el estado destino.
-            """
+    def agregar_transicion(afd, estado_origen, simbolo, estado_destino):
+        """
+        Esta funcion agrega una transicion al diccionario de transiciones del AFD.
+        La llave del diccionario es la tupla del AFD (estado, simbolo) y el valor es el estado destino.
+        """
 
-            #Definimos la clave
-            clave = (estado_origen, simbolo)
+        #Definimos la clave
+        clave = (estado_origen, simbolo)
 
-            #Verificamos si la clave ya existe en el diccionario de transiciones
-            if clave in afd.transiciones:
-                #Si ya existe, la agregamos a las transiciones repetidas
-                afd.transiciones_repetidas.append((estado_origen, simbolo, estado_destino))
-                #Retornamos False para indicar que no se pudo agregar la transicion
-                return False
+        #Verificamos si la clave ya existe en el diccionario de transiciones
+        if clave in afd.transiciones:
+            #Si ya existe, la agregamos a las transiciones repetidas
+            afd.transiciones_repetidas.append((estado_origen, simbolo, estado_destino))
+            #Retornamos False para indicar que no se pudo agregar la transicion
+            return False
 
-            #Si no existe, agregamos la transicion al diccionario de transiciones
-            afd.transiciones[clave] = estado_destino
-            #Retornamos True para indicar que se agrego la transicion correctamente
-            return True
+        #Si no existe, agregamos la transicion al diccionario de transiciones
+        afd.transiciones[clave] = estado_destino
+        #Retornamos True para indicar que se agrego la transicion correctamente
+        return True
 
+    def mostrar_definicion_formal(afd):
         """Funcion que muestra la definicion formal del AFD (es decir, su quintupla)"""
-        def mostrar_definicion_formal(afd):
-            print("\n--- DEFINICION FORMAL DEL AFD ---")
-            print("Nombre: " , afd.nombre)
-            print("Q =", afd.estados)
-            print("Σ =", afd.alfabeto)
-            print("q0 =", afd.estado_inicial)
-            print("F =", afd.estados_finales)
-            print("δ =")
+        print("\n--- DEFINICION FORMAL DEL AFD ---")
+        print("Nombre: " , afd.nombre)
+        print("Q =", afd.estados)
+        print("Σ =", afd.alfabeto)
+        print("q0 =", afd.estado_inicial)
+        print("F =", afd.estados_finales)
+        print("δ =")
 
-            #Para las transiciones, vamos a recorrer el diccionario de transiciones y mostrar cada una de ellas (iterando con un for jeje)
-            for clave, destino in afd.transiciones.items():
-                estado_origen, simbolo = clave
-                print("  δ(" + estado_origen + ", " + simbolo + ") = " + destino)
+        #Para las transiciones, vamos a recorrer el diccionario de transiciones y mostrar cada una de ellas (iterando con un for jeje)
+        for clave, destino in afd.transiciones.items():
+            estado_origen, simbolo = clave
+            print("  δ(" + estado_origen + ", " + simbolo + ") = " + destino)
 
+    def mostrar_tabla_transicion(afd):
         """Funcion para mostrar la tabla de transiciones del AFD (en formato de tabla)"""
-        def mostrar_tabla_transiciones(afd):
-            #Si no existen estados o alfabeto defnidos, no podemos mostrar la tabla de transiciones
-            if not afd.estados or not afd.alfabeto:
-                print("\nNo hay datos suficientes para mostrar la tabla de transicion.")
-                return
-            
-            #En caso de que si existan estados y alfabeto, vamos a mostrar la tabla de transiciones
-            #Primero ordenamos los estados y el alfabeto para que la tabla se vea tuanis
-            estados_ordenados = sorted(afd.estados)
-            alfabeto_ordenado = sorted(afd.alfabeto)
+        #Si no existen estados o alfabeto defnidos, no podemos mostrar la tabla de transiciones
+        if not afd.estados or not afd.alfabeto:
+            print("\nNo hay datos suficientes para mostrar la tabla de transicion.")
+            return
 
-            #Definimos el ancho de la tabla
-            ancho = 15
-            #Tambien definimos el encabezado, lo ajustamos a la izquierda y le damos un ancho de 15 caracteres
-            encabezado = "Estado".ljust(ancho)
+        #En caso de que si existan estados y alfabeto, vamos a mostrar la tabla de transiciones
+        #Primero ordenamos los estados y el alfabeto para que la tabla se vea tuanis
+        estados_ordenados = sorted(afd.estados)
+        alfabeto_ordenado = sorted(afd.alfabeto)
 
-            #Por cada simbolo del alfabeto, vamos a agregarlo al encabezado de la tabla con la misma logica de ajuste a la izquierda y ancho de 15 caracteres
+        #Definimos el ancho de la tabla
+        ancho = 15
+        #Tambien definimos el encabezado, lo ajustamos a la izquierda y le damos un ancho de 15 caracteres
+        encabezado = "Estado".ljust(ancho)
+
+        #Por cada simbolo del alfabeto, vamos a agregarlo al encabezado de la tabla con la misma logica de ajuste a la izquierda y ancho de 15 caracteres
+        for simbolo in alfabeto_ordenado:
+            encabezado += simbolo.ljust(ancho)
+
+        #Imprimimos el encabezado de la tabla
+        print("\n--- TABLA DE TRANSICIONES DEL AFD ---")
+        print(encabezado)
+        print("-" * len(encabezado))
+
+        #Vamos llenando las filas de la tabla con los estados y sus transiciones
+        for estado in estados_ordenados:
+            fila = estado.ljust(ancho)
+
             for simbolo in alfabeto_ordenado:
-                encabezado += simbolo.ljust(ancho)
+                destino = afd.transiciones.get((estado, simbolo), "---")
+                fila += destino.ljust(ancho)
 
-            #Imprimimos el encabezado de la tabla
-            print("\n--- TABLA DE TRANSICIONES DEL AFD ---")
-            print(encabezado)
-            print("-" * len(encabezado))
-
-            #Vamos llenando las filas de la tabla con los estados y sus transiciones
-            for estado in estados_ordenados:
-                fila = estado.ljust(ancho)
-
-                for simbolo in alfabeto_ordenado:
-                    destino = afd.transiciones.get((estado, simbolo), "---")
-                    fila += destino.ljust(ancho)
-
-                print(fila)
+            print(fila)
 
 class ValidadorAFD:
     """Clase que se encarga de validar un AFD y su funcionamiento."""
@@ -236,54 +238,54 @@ class SimuladorAFD:
         #De primero, comprobamos que todos los simbolos pertenezcan al alfabeto.
         for simbolo in cadena:
             if simbolo not in afd.alfabeto:
-                return False,(
+                return False, (
                     "La cadena contiene el simbolo "
                     + simbolo
                     + " , que no pertenece al alfabeto."
                 )
 
-            #Ahora definimos el estado inicial
-            estado_actual = afd.estado_inicial
-            #Y comenzamos con la traza... :D
+        #Ahora definimos el estado inicial
+        estado_actual = afd.estado_inicial
+        #Y comenzamos con la traza... :D
+        if mostrar_traza:
+            print("\n--- TRAZA DE EJECUCION ---")
+            print("Estado inicial: ", estado_actual)
+
+        #Por cada simbolo... avanzamos (y opcionalmente mostramos su traza)
+        for simbolo in cadena:
+            siguiente_estado = afd.transiciones[(estado_actual, simbolo)]
+
             if mostrar_traza:
-                print("\n--- TRAZA DE EJECUCION ---")
-                print("Estado inicial: ", estado_actual)
-
-                #Por cada simbolo... mostramos su traza
-                for simbolo in cadena:
-                    siguiente_estado = afd.transiciones[(estado_actual, simbolo)]
-
-                    if mostrar_traza:
-                        print(
-                            estado_actual
-                            + " ---"
-                            + simbolo 
-                            + " -->"
-                            + siguiente_estado
-                        )
-
-                    #Nos movemos de estado
-                    estado_actual = siguiente_estado
-
-                #Evaluamos si el estado esta entre el conjunto de estados finales
-                aceptada = estado_actual in afd.estados_finales
-                resultado = "Aceptada" if aceptada else "Rechazada"
-
-                #Mostramos el resumen de la evaluacion
-                if mostrar_traza:
-                    print("Estado final: ", estado_actual)
-                    print("Resultado: " + resultado)
-
-                #Actualizamos el historial
-                afd.historial.append(
-                    {
-                        "cadena": cadena, 
-                        "estado_final": estado_actual,
-                        "resultado": resultado,
-                    }
+                print(
+                    estado_actual
+                    + " ---"
+                    + simbolo
+                    + "--> "
+                    + siguiente_estado
                 )
-                #Retornamos su estado de aceptacion
-                return aceptada, resultado
+
+            #Nos movemos de estado
+            estado_actual = siguiente_estado
+
+        #Evaluamos si el estado esta entre el conjunto de estados finales
+        aceptada = estado_actual in afd.estados_finales
+        resultado = "Aceptada" if aceptada else "Rechazada"
+
+        #Mostramos el resumen de la evaluacion
+        if mostrar_traza:
+            print("Estado final: ", estado_actual)
+            print("Resultado: " + resultado)
+
+        #Actualizamos el historial
+        afd.historial.append(
+            {
+                "cadena": cadena,
+                "estado_final": estado_actual,
+                "resultado": resultado,
+            }
+        )
+        #Retornamos su estado de aceptacion
+        return aceptada, resultado
 
 class CargadorAFD:
     """ Clase creada con el din de responsabiliarse de crear los AAFD manualmente o dese la carga 
@@ -348,7 +350,7 @@ class CargadorAFD:
         afd = AFD()
 
         #Ingreso obligatorio del nombre del AFD
-        while afd.nombre.strip == "":
+        while afd.nombre.strip() == "":
             afd.nombre = input("Nombre del automata: ").strip()
 
             #Si el nombre se ingresa como vacio..
@@ -372,9 +374,10 @@ class CargadorAFD:
             #Si el estado inial si se encuentra en los estados
             if inicial in afd.estados:
                 afd.estado_inicial = inicial
+                break
 
             #Si no esxiste a los estados
-            print("El estado inicial depe pertenecer al conjunto de estados.")
+            print("El estado inicial debe pertenecer al conjunto de estados.")
         while True:
             #Estados finales
             finales = CargadorAFD.pedir_conjunto(
@@ -408,11 +411,25 @@ class CargadorAFD:
 
         return afd
 
+    #Expresiones regulares para validar cada linea del archivo del AFD:
+    # una para cada encabezado (NOMBRE=, ESTADOS=, etc.) y otra para las
+    # lineas de transicion (origen,simbolo,destino).
+    _PATRON_ENCABEZADO = {
+        "NOMBRE": re.compile(r"^NOMBRE=(?P<valor>.+)$"),
+        "ESTADOS": re.compile(r"^ESTADOS=(?P<valor>.+)$"),
+        "ALFABETO": re.compile(r"^ALFABETO=(?P<valor>.+)$"),
+        "INICIAL": re.compile(r"^INICIAL=(?P<valor>.+)$"),
+        "FINALES": re.compile(r"^FINALES=(?P<valor>.*)$"),
+    }
+    _PATRON_TRANSICION = re.compile(
+        r"^(?P<origen>[^,\s]+),(?P<simbolo>[^,\s]+),(?P<destino>[^,\s]+)$"
+    )
+
     @staticmethod
     def cargar_archivo(ruta):
         """
         Carga el formato definido en el enunciado.
-        No utiliza librerías: la sintaxis se valida mediante funciones propias.
+        La sintaxis de cada línea se valida mediante expresiones regulares (re).
         """
         try:
             archivo = open(ruta, "r", encoding="utf-8")
@@ -435,26 +452,26 @@ class CargadorAFD:
         afd = AFD()
         errores = []
 
-        # Las primeras seis secciones deben aparecer en este orden.
-        encabezados = [
-            "NOMBRE=",
-            "ESTADOS=",
-            "ALFABETO=",
-            "INICIAL=",
-            "FINALES=",
-        ]
+        # Las primeras cinco secciones deben aparecer en este orden y cumplir
+        # el patrón CLAVE=valor (validado con expresiones regulares).
+        claves_orden = ["NOMBRE", "ESTADOS", "ALFABETO", "INICIAL", "FINALES"]
+        valores_encabezado = {}
 
-        for indice in range(5):
-            if not limpias[indice].startswith(encabezados[indice]):
+        for indice, clave in enumerate(claves_orden):
+            coincidencia = CargadorAFD._PATRON_ENCABEZADO[clave].match(limpias[indice])
+
+            if coincidencia is None:
                 errores.append(
                     "Línea "
                     + str(indice + 1)
-                    + ": se esperaba '"
-                    + encabezados[indice]
-                    + "...'."
+                    + ": se esperaba el patrón '"
+                    + clave
+                    + "=...'."
                 )
+            else:
+                valores_encabezado[clave] = coincidencia.group("valor").strip()
 
-        if len(limpias) <= 5 or limpias[5] != "TRANSICIONES:":
+        if not re.match(r"^TRANSICIONES:$", limpias[5]):
             errores.append("Línea 6: se esperaba exactamente 'TRANSICIONES:'.")
 
         if len(errores) > 0:
@@ -463,13 +480,13 @@ class CargadorAFD:
                 print("-", error)
             return None
 
-        # Extracción de los componentes principales.
-        afd.nombre = limpias[0][len("NOMBRE="):].strip()
+        # Extracción de los componentes principales (ya validados por regex arriba).
+        afd.nombre = valores_encabezado["NOMBRE"]
 
-        estados_texto = limpias[1][len("ESTADOS="):].strip()
-        alfabeto_texto = limpias[2][len("ALFABETO="):].strip()
-        afd.estado_inicial = limpias[3][len("INICIAL="):].strip()
-        finales_texto = limpias[4][len("FINALES="):].strip()
+        estados_texto = valores_encabezado["ESTADOS"]
+        alfabeto_texto = valores_encabezado["ALFABETO"]
+        afd.estado_inicial = valores_encabezado["INICIAL"]
+        finales_texto = valores_encabezado["FINALES"]
 
         estados, error_estados = CargadorAFD._convertir_lista_archivo(
             estados_texto, "ESTADOS", permitir_vacio=False
@@ -498,8 +515,8 @@ class CargadorAFD:
         afd.alfabeto = alfabeto
         afd.estados_finales = finales
 
-        # Cada línea después de TRANSICIONES debe tener exactamente
-        # origen,símbolo,destino.
+        # Cada línea después de TRANSICIONES debe cumplir el patrón
+        # origen,símbolo,destino (validado con expresión regular).
         for indice in range(6, len(limpias)):
             linea = limpias[indice]
 
@@ -509,27 +526,20 @@ class CargadorAFD:
                 )
                 continue
 
-            partes = linea.split(",")
+            coincidencia = CargadorAFD._PATRON_TRANSICION.match(linea)
 
-            if len(partes) != 3:
+            if coincidencia is None:
                 errores.append(
                     "Línea "
                     + str(indice + 1)
-                    + ": una transición debe tener formato origen,símbolo,destino."
+                    + ": una transición debe tener formato origen,símbolo,destino "
+                    + "(sin espacios ni campos vacíos)."
                 )
                 continue
 
-            origen = partes[0].strip()
-            simbolo = partes[1].strip()
-            destino = partes[2].strip()
-
-            if origen == "" or simbolo == "" or destino == "":
-                errores.append(
-                    "Línea "
-                    + str(indice + 1)
-                    + ": la transición contiene campos vacíos."
-                )
-                continue
+            origen = coincidencia.group("origen")
+            simbolo = coincidencia.group("simbolo")
+            destino = coincidencia.group("destino")
 
             afd.agregar_transicion(origen, simbolo, destino)
 
