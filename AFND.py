@@ -1,133 +1,252 @@
 """
-Clase AFD que representa formalmente un Autómata Finito Determinista.
-Un AFD es una tupla (Q, Σ, δ, q0, F) donde:
+Clase AFND que representa formalmente un Autómata Finito NO Determinista.
+Un AFND es una tupla (Q, Σ, δ, q0, F) donde:
     Q: conjunto de estados
     Σ: alfabeto (símbolos válidos)
     δ: función de transición (diccionario)
     q0: estado inicial
     F: conjunto de estados finales (aceptación)
 """
-class AFD:
-    """Constructor que inicializa un Autómata Finito Determinista vacío."""
-    def __init__(afd, nombre=""):
+
+
+class AFND:
+    """Constructor que inicializa un Autómata Finito NO Determinista vacío."""
+
+    def __init__(afnd, nombre=""):
         # Identificador del autómata
-        afd.nombre = nombre
-        
+        afnd.nombre = nombre
+
         # Conjunto de todos los estados posibles del autómata
-        afd.estados = set()
-        
+        afnd.estados = set()
+
         # Alfabeto: conjunto de símbolos válidos que el autómata puede procesar
-        afd.alfabeto = set()
-        
+        afnd.alfabeto = set()
+
         # Estado inicial: punto de partida para procesar cualquier cadena
-        afd.estado_inicial = ""
-        
+        afnd.estado_inicial = ""
+
         # Conjunto de estados finales (aceptadores): si terminamos en uno de estos,
         # la cadena es aceptada; si no, es rechazada
-        afd.estados_finales = set()
-        
-        # Diccionario de transiciones: clave = (estado, símbolo), valor = estado_destino
-        # Esto es la función δ del AFD formal
-        afd.transiciones = {}
-        
-        # A diferencia del AFD, en un AFND se puede tener multiples estados para la misma pareja.
-        
-        
-        # Booleano que indica si el AFD ha pasado validación estructural
-        # (cumple con ser un AFD válido)
-        afd.es_valido = False
-        
-        # Historial de todas las cadenas evaluadas: registra resultado de cada procesamiento
-        afd.historial = []
+        afnd.estados_finales = set()
 
-    def agregar_transicion(afd, estado_origen, simbolo, estado_destino):
+        # Diccionario de transiciones:
+        # clave = (estado, símbolo)
+        # valor = conjunto de estados destino
+        # Esto representa la función δ del AFND formal
+        afnd.transiciones = {}
+
+        # A diferencia del AFD, en un AFND se pueden tener múltiples
+        # estados destino para una misma pareja (estado, símbolo).
+
+        # Booleano que indica si el AFND ha pasado la validación estructural
+        # (cumple con ser un AFND válido)
+        afnd.es_valido = False
+
+        # Historial de todas las cadenas evaluadas:
+        # registra el resultado de cada procesamiento
+        afnd.historial = []
+
+    def agregar_transicion(
+        afnd,
+        estado_origen,
+        simbolo,
+        estados_destino
+    ):
         """
-        Agrega una transición a la función δ del AFD.
-        En un AFD determinista, cada pareja (estado, símbolo) debe tener EXACTAMENTE
-        una transición. Si detectamos una duplicada, la registramos como anomalía.
-        
+        Agrega o une un conjunto de destinos para una pareja de transición.
+
         Parámetros:
-            estado_origen: Estado desde el cual partimos
-            simbolo: Símbolo del alfabeto que leemos
-            estado_destino: Estado al cual se va después de leer el símbolo
-        
-        Retorna:
-            True si la transición se agregó correctamente
-            False si ya existía una transición para ese (estado, símbolo)
+            estado_origen: estado desde el cual inicia la transición
+            simbolo: símbolo que permite realizar la transición
+            estados_destino: conjunto de posibles estados de llegada
         """
+
         # Creamos una tupla (estado, símbolo) como clave del diccionario
         clave = (estado_origen, simbolo)
 
-        #Cualquier modificacion en δ invalida una validacion anterior
-        afd.es_valido = False
-        
-        # Como el AFND tiene multiples estados para la misma pareja, omitimos la validacion de duplicados y simplemente agregamos la transicion.
-        afd.transiciones[clave] = estado_destino
-        return True
+        # Cualquier modificación en δ invalida una validación anterior
+        afnd.es_valido = False
 
-    def mostrar_definicion_formal(afd):
+        # Si no existe la clave en el diccionario de transiciones,
+        # la inicializamos con un conjunto vacío
+        if clave not in afnd.transiciones:
+            afnd.transiciones[clave] = set()
+
+        # Unimos los nuevos estados destino con los que ya existían
+        # para la misma pareja (estado, símbolo)
+        afnd.transiciones[clave].update(estados_destino)
+
+    # Creamos una función especializada para obtener el conjunto de destinos
+    # de una tupla (estado, símbolo) en el diccionario de transiciones δ
+    def obtener_destinos(afnd, estado_origen, simbolo):
         """
-        Muestra la definición formal del AFD usando la notación matemática:
-        AFD = (Q, Σ, δ, q0, F)
-        
+        Retorna una copia del conjunto de destinos.
+        Si la transición no fue definida, retorna el conjunto vacío ∅.
+        """
+
+        # get busca la transición. Si no existe, utiliza un conjunto vacío
+        destinos = afnd.transiciones.get(
+            (estado_origen, simbolo),
+            set()
+        )
+
+        # Retornamos una copia para evitar que el conjunto original
+        # sea modificado accidentalmente desde fuera de la clase
+        return set(destinos)
+
+    # Mostramos la definición formal completa del AFND
+    def mostrar_definicion_formal(afnd):
+        """
+        Muestra la definición formal del AFND usando la notación matemática:
+
+        AFND = (Q, Σ, δ, q0, F)
+
         Donde:
-            Q: Conjunto de estados
-            Σ: Alfabeto (símbolos válidos)
-            δ: Función de transición
-            q0: Estado inicial
-            F: Conjunto de estados finales
+            Q: conjunto de estados
+            Σ: alfabeto
+            δ: función de transición
+            q0: estado inicial
+            F: conjunto de estados finales
         """
-        print("\n--- DEFINICION FORMAL DEL AFD ---")
-        print("Nombre: " , afd.nombre)
-        print("Q =", afd.estados)
-        print("Σ =", afd.alfabeto)
-        print("q0 =", afd.estado_inicial)
-        print("F =", afd.estados_finales)
-        print("δ =")
-        
-        # Iteramos sobre todas las transiciones y las mostramos en formato δ(estado, símbolo) = destino
-        for clave, destino in afd.transiciones.items():
-            estado_origen, simbolo = clave
-            print("  δ(" + estado_origen + ", " + simbolo + ") = " + destino)
 
-    def mostrar_tabla_transicion(afd):
+        print("\n--- DEFINICIÓN FORMAL DEL AFND ---")
+        print("Nombre:", afnd.nombre)
+        print("Q =", afnd._formatear_conjunto(afnd.estados))
+        print("Σ =", afnd._formatear_conjunto(afnd.alfabeto))
+        print("q0 =", afnd.estado_inicial)
+        print("F =", afnd._formatear_conjunto(afnd.estados_finales))
+        print("δ =")
+
+        # Iteramos sobre todos los estados del AFND
+        for estado in sorted(afnd.estados):
+
+            # Por cada estado, recorremos todos los símbolos del alfabeto
+            for simbolo in sorted(afnd.alfabeto):
+
+                # Obtenemos el conjunto de destinos correspondiente
+                destinos = afnd.obtener_destinos(
+                    estado,
+                    simbolo
+                )
+
+                # Mostramos la transición en formato:
+                # δ(estado, símbolo) = {destinos}
+                print(
+                    "  δ("
+                    + estado
+                    + ", "
+                    + simbolo
+                    + ") = "
+                    + afnd._formatear_conjunto(destinos)
+                )
+
+    def mostrar_tabla_transicion(afnd):
         """
         Muestra la tabla de transiciones en formato tabular.
-        Cada fila representa un estado, cada columna un símbolo del alfabeto.
-        Las celdas contienen el estado destino para esa transición.
+
+        Cada fila representa un estado y cada columna representa
+        un símbolo del alfabeto.
+
+        Las celdas muestran los destinos como conjuntos,
+        incluso cuando solamente contienen un estado.
         """
-        # Validación: necesitamos al menos un estado y un símbolo para mostrar algo útil
-        if not afd.estados or not afd.alfabeto:
-            print("\nNo hay datos suficientes para mostrar la tabla de transicion.")
+
+        # Necesitamos al menos un estado y un símbolo
+        # para poder construir la tabla
+        if not afnd.estados or not afnd.alfabeto:
+            print(
+                "\nNo hay datos suficientes para mostrar "
+                "la tabla de transición."
+            )
             return
-        
-        # Ordenamos los estados y símbolos alfabéticamente para mejor legibilidad
-        estados_ordenados = sorted(afd.estados)
-        alfabeto_ordenado = sorted(afd.alfabeto)
-        
-        # Parámetro de formato: ancho de cada columna en caracteres
-        ancho = 15
-        
-        # Creamos el encabezado de la tabla: primera columna es "Estado"
+
+        # Ordenamos los estados y símbolos alfabéticamente
+        # para mejorar la legibilidad de la tabla
+        estados_ordenados = sorted(afnd.estados)
+        alfabeto_ordenado = sorted(afnd.alfabeto)
+
+        # Esta lista almacenará temporalmente el texto de todas las celdas
+        # para poder calcular el ancho necesario de las columnas
+        celdas = []
+
+        # Recorremos cada estado
+        for estado in estados_ordenados:
+
+            # Por cada estado, recorremos cada símbolo
+            for simbolo in alfabeto_ordenado:
+
+                # Obtenemos los destinos de la pareja (estado, símbolo)
+                destinos = afnd.obtener_destinos(
+                    estado,
+                    simbolo
+                )
+
+                # Formateamos el conjunto y lo guardamos
+                # para calcular posteriormente el ancho de la tabla
+                celdas.append(
+                    afnd._formatear_conjunto(destinos)
+                )
+
+        # Calculamos el ancho necesario para cada columna.
+        # Se considera el encabezado, los estados, los símbolos
+        # y el contenido de todas las celdas
+        elementos_tabla = (
+            estados_ordenados
+            + alfabeto_ordenado
+            + celdas
+        )
+
+        ancho = max(
+            [len("Estado")]
+            + [len(elemento) for elemento in elementos_tabla]
+        ) + 3
+
+        # Creamos la primera columna del encabezado
         encabezado = "Estado".ljust(ancho)
-        
-        # Agregamos una columna para cada símbolo del alfabeto
+
+        # Agregamos una columna por cada símbolo del alfabeto
         for simbolo in alfabeto_ordenado:
             encabezado += simbolo.ljust(ancho)
-        
-        # Imprimimos el encabezado y separador visual
-        print("\n--- TABLA DE TRANSICIONES DEL AFD ---")
+
+        # Imprimimos el encabezado de la tabla
+        print("\n--- TABLA DE TRANSICIONES DEL AFND ---")
         print(encabezado)
         print("-" * len(encabezado))
-        
-        # Llenamos las filas: una por cada estado
+
+        # Mostramos cada estado en una fila
         for estado in estados_ordenados:
             fila = estado.ljust(ancho)
-            
-            # Para cada símbolo, buscamos el estado destino
+
+            # Agregamos a la fila el conjunto de destinos
+            # correspondiente a cada símbolo
             for simbolo in alfabeto_ordenado:
-                # Si no existe transición, mostramos "---" (muy importante en AFD parciales)
-                destino = afd.transiciones.get((estado, simbolo), "---")
-                fila += destino.ljust(ancho)
-            
+                destinos = afnd.obtener_destinos(
+                    estado,
+                    simbolo
+                )
+
+                destino_formateado = (
+                    afnd._formatear_conjunto(destinos)
+                )
+
+                fila += destino_formateado.ljust(ancho)
+
+            # Imprimimos la fila completa
             print(fila)
+
+    # Formato utilizado para mostrar conjuntos
+    @staticmethod
+    def _formatear_conjunto(elementos):
+        """
+        Devuelve ∅ si el conjunto está vacío.
+
+        Si contiene elementos, los ordena y los muestra
+        separados por comas dentro de llaves.
+        """
+
+        # Si no existen elementos, representamos el conjunto vacío
+        if not elementos:
+            return "∅"
+
+        # Ordenamos los elementos para obtener una salida consistente
+        return "{" + ", ".join(sorted(elementos)) + "}"
