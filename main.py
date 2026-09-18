@@ -1,185 +1,183 @@
-import re  # Módulo para validar patrones de entrada usando expresiones regulares
-import AFD  # Importamos la clase AFD desde el archivo AFD.py
-import ValidadorAFD  # Importamos la clase ValidadorAFD para validar la estructura del AFD
-import SimuladorAFD  # Importamos la clase SimuladorAFD para evaluar cadenas con el AFD
-import CargadorAFD  # Importamos la clase CargadorAFD para crear o cargar AFD desde archivos
+"""Menú principal del motor de validación y conversión de AFD y AFND."""
+
+# Importamos las clases que representan los dos tipos de autómatas
+from AFD import AFD
+from AFND import AFND
+
+# Importamos los cargadores para crear autómatas manualmente o desde archivos
+from CargadorAFD import CargadorAFD
+from CargadorAFND import CargadorAFND
+
+# Importamos la clase encargada de transformar un AFND en un AFD
+from ConvertidorAFND import ConvertidorAFND
+
+# Importamos el simulador y los validadores de cada tipo de autómata
+from SimuladorAFD import SimuladorAFD
+from ValidadorAFD import ValidadorAFD
+from ValidadorAFND import ValidadorAFND
 
 
+def mostrar_menu():
+    """Muestra las quince opciones solicitadas en el enunciado."""
 
-# ==================== FUNCIONES DEL MENÚ PRINCIPAL ====================
-# Estas funciones manejan la interfaz del usuario y el flujo del programa
+    # Creamos el encabezado principal del programa
+    print("\n" + "=" * 68)
+    print("MOTOR DE VALIDACIÓN Y CONVERSIÓN DE AUTÓMATAS".center(68))
+    print("=" * 68)
 
-def mostrar_validacion(afd):
-    """
-    Valida un AFD y muestra un reporte completo de su estructura.
-    Si el AFD es válido, también analiza su accesibilidad.
-    """
-    valido, errores = ValidadorAFD.validar(afd)
-    
+    # Mostramos todas las opciones disponibles para el usuario
+    print(" 1. Crear un AFD manualmente")
+    print(" 2. Cargar un AFD desde un archivo .txt")
+    print(" 3. Crear un AFND manualmente")
+    print(" 4. Cargar un AFND desde un archivo .txt")
+    print(" 5. Mostrar la definición formal y la tabla del autómata cargado")
+    print(" 6. Validar la estructura del autómata")
+    print(" 7. Convertir el AFND cargado en un AFD equivalente")
+    print(" 8. Mostrar la tabla de equivalencias de macroestados")
+    print(" 9. Mostrar la tabla de transición del AFD generado")
+    print("10. Evaluar una cadena")
+    print("11. Evaluar un archivo de cadenas")
+    print("12. Consultar el historial de evaluaciones")
+    print("13. Realizar el análisis estructural")
+    print("14. Cargar o crear otro autómata")
+    print("15. Salir")
+
+
+def mostrar_validacion(automata):
+    """Valida el tipo de autómata activo y muestra un reporte comprensible."""
+
+    # Antes de validar, comprobamos que exista un autómata cargado
+    if automata is None:
+        print("\nError: primero debe crear o cargar un autómata.")
+        return
+
+    # Si el objeto es un AFND, utilizamos su validador correspondiente
+    if isinstance(automata, AFND):
+        valido, errores = ValidadorAFND.validar(automata)
+        print("\n--- VALIDACIÓN DEL AFND ---")
+        print("Clasificación:", "AFND VÁLIDO" if valido else "AFND INVÁLIDO")
+        _mostrar_lista_errores(errores)
+        return
+
+    # Si no es un AFND, trabajamos con las validaciones propias de un AFD
+    valido, errores = ValidadorAFD.validar(automata)
+    clasificacion = ValidadorAFD.clasificar(automata)
     print("\n--- VALIDACIÓN DEL AFD ---")
-    
+    print("Clasificación:", clasificacion)
+
+    # Si no hay errores, el AFD puede utilizarse para evaluar cadenas
     if valido:
-        # ========== AFD VÁLIDO ==========
-        print("Estado: VÁLIDO")
-        print("El autómata cumple con todas las validaciones estructurales del AFD.")
-        
-        # Realizar análisis de accesibilidad
-        analisis = ValidadorAFD.analizar_estructura(afd)
-        print("\nAnálisis de accesibilidad:")
-        print("  Estados alcanzables:", analisis["alcanzables"])
-        print("  Estados inaccesibles (código muerto):", analisis["inaccesibles"])
-        print("  Estados finales alcanzables:", analisis["finales_alcanzables"])
-        
-        # Verificar si el lenguaje es vacío
-        if analisis["lenguaje_posiblemente_vacio"]:
-            print("\n⚠️  ADVERTENCIA: El lenguaje reconocido podría ser vacío.")
-            print("   (No hay estados finales alcanzables desde q0)")
-        else:
-            print("\n✅ El autómata puede aceptar al menos una cadena.")
-    else:
-          # ========== AFD INVÁLIDO ==========
-        print("Estado: INVÁLIDO")
-        print(
-            "El autómata NO cumple con las validaciones. "
-            "Errores encontrados:"
-        )
+        print("El AFD es determinista, completo y estructuralmente válido.")
+        return
 
-        for error in errores:
-            print("-", error)
+    # Si la validación falla, mostramos todos los errores encontrados
+    _mostrar_lista_errores(errores)
 
-        # Verificar si el único problema es la falta de transiciones
-        faltantes = ValidadorAFD.obtener_transiciones_faltantes(afd)
+    # Solo se ofrece completar cuando la incompletitud es el único problema.
+    if clasificacion == "AFD INCOMPLETO":
+        respuesta = input(
+            "¿Desea completarlo con un estado de trampa? (s/n): "
+        ).strip().lower()
 
-        if len(faltantes) > 0 and len(errores) == len(faltantes):
-            print(
-                "\nEl AFD es estructuralmente consistente, "
-                "pero su función de transición está incompleta."
-            )
-            print(
-                "Puede completarse automáticamente mediante "
-                "un estado trampa."
-            )
+        # Si el usuario acepta, completamos las transiciones faltantes
+        if respuesta in ("s", "si", "sí"):
+            nombre, cantidad = ValidadorAFD.completar_con_estado_trampa(automata)
+            ValidadorAFD.validar(automata)
+            print("Estado de trampa agregado:", nombre)
+            print("Transiciones completadas:", cantidad)
+            print("Nueva clasificación:", ValidadorAFD.clasificar(automata))
 
-            while True:
-                respuesta = input(
-                    "¿Desea completar el AFD con un estado trampa? (s/n): "
-                ).strip().lower()
 
-                if respuesta in ("s", "si", "sí"):
-                    nombre_trampa, cantidad = (
-                        ValidadorAFD.completar_con_estado_trampa(afd)
-                    )
+def obtener_afd_operativo(automata, afd_generado):
+    """Selecciona el AFD directo o el resultado de una conversión."""
 
-                    print(
-                        "\nSe agregó el estado trampa:",
-                        nombre_trampa
-                    )
-                    print(
-                        "Transiciones faltantes completadas:",
-                        cantidad
-                    )
+    # Si se cargó directamente un AFD, ese será el autómata utilizado
+    if isinstance(automata, AFD):
+        return automata
 
-                    # Mostrar nuevamente la validación actualizada
-                    mostrar_validacion(afd)
-                    return
+    # Si se cargó un AFND, necesitamos utilizar su AFD equivalente
+    if isinstance(automata, AFND):
 
-                if respuesta in ("n", "no"):
-                    print(
-                        "El AFD permanecerá incompleto y no podrá "
-                        "evaluar cadenas."
-                    )
-                    break
+        # No permitimos evaluar el AFND si todavía no fue convertido
+        if afd_generado is None:
+            print("\nError: convierta el AFND antes de usar esta función.")
+            return None
+        return afd_generado
 
-                print("Error: responda únicamente s o n.")
+    print("\nError: primero debe crear o cargar un autómata.")
+    return None
 
 
 def asegurar_afd_valido(afd):
-    """
-    Valida que exista un AFD válido antes de realizar operaciones.
-    Retorna True si el AFD es válido, False si no o no existe.
-    """
-    # ========== VERIFICAR QUE EXISTE AFD ==========
+    """Impide simulaciones sobre un AFD inválido, incompleto o no determinista."""
+
+    # Si no recibimos ningún AFD, no se puede continuar con la operación
     if afd is None:
-        print("\nError: Primero debe crear o cargar un autómata.")
         return False
-    
-    # ========== VALIDAR AFD ==========
+
+    # Ejecutamos nuevamente la validación para trabajar con datos actualizados
     valido, errores = ValidadorAFD.validar(afd)
-    
-    if not valido:
-        print("\nError: El autómata no puede procesarse porque no es válido.")
-        print("Errores encontrados:")
-        for error in errores:
-            print("-", error)
-        return False
-    
-    return True
+
+    # Si cumple todas las reglas, indicamos que puede ser utilizado
+    if valido:
+        return True
+
+    # Mostramos por qué el AFD no puede procesar cadenas
+    print("\nError: el AFD no está listo para procesar cadenas.")
+    print("Clasificación:", ValidadorAFD.clasificar(afd))
+    _mostrar_lista_errores(errores)
+    return False
 
 
 def evaluar_archivo_cadenas(afd):
-    """
-    Evalúa múltiples cadenas de un archivo de forma masiva.
-    Cada línea del archivo es una cadena a procesar.
-    
-    Formato del archivo:
-        Línea 1: primera cadena
-        Línea 2: segunda cadena
-        ...
-    """
-    # ========== VALIDAR AFD ==========
+    """Evalúa cada línea de un archivo, incluida una línea que represente ε."""
+
+    # Antes de leer el archivo, comprobamos que el AFD sea válido
     if not asegurar_afd_valido(afd):
         return
-    
-    # ========== SOLICITAR RUTA ==========
-    ruta = input("\nRuta del archivo de cadenas: ").strip()
-    
-    # ========== LEER ARCHIVO ==========
+
+    # Solicitamos la ubicación del archivo que contiene las cadenas
+    ruta = input("Ruta del archivo de cadenas: ").strip()
+
+    # Intentamos abrir y leer todas las líneas del archivo
     try:
         archivo = open(ruta, "r", encoding="utf-8")
         lineas = archivo.readlines()
         archivo.close()
-    except Exception as error:
-        print("Error: No fue posible abrir el archivo:", error)
+    except (OSError, UnicodeError) as error:
+        print("Error: no fue posible abrir el archivo:", error)
         return
-    
-    # ========== PROCESAR CADENAS ==========
-    print("\n=== EVALUACIÓN POR LOTE ===")
-    print(f"Procesando {len(lineas)} cadena(s)...\n")
-    
-    # Procesar cada línea como una cadena
+
+    print("\n--- EVALUACIÓN POR LOTES ---")
+
+    # Cada línea del archivo representa una cadena independiente
     for numero, linea in enumerate(lineas, start=1):
-        cadena = linea.strip()
-        print(f"\nCadena {numero}: {repr(cadena)}")
-        
-        # Evaluar la cadena
-        aceptada, resultado = SimuladorAFD.evaluar(
-            afd, cadena, mostrar_traza=True
-        )
-        
-        # Si resultado contiene un mensaje de error (símbolo inválido), mostrarlo
-        if isinstance(resultado, str) and resultado not in ("Aceptada", "Rechazada"):
+
+        # Quitamos únicamente el salto de línea para conservar la cadena original
+        cadena = linea.rstrip("\r\n")
+        print("\nCadena", str(numero) + ":", repr(cadena))
+        # Enviamos la cadena al simulador y solicitamos su traza completa
+        aceptada, resultado = SimuladorAFD.evaluar(afd, cadena, True)
+
+        # Si el simulador devuelve un mensaje diferente, ocurrió un error
+        if resultado not in ("Aceptada", "Rechazada"):
             print("Error:", resultado)
 
 
 def mostrar_historial(afd):
-    """
-    Muestra el historial de todas las cadenas evaluadas durante la sesión.
-    """
-    # ========== VALIDAR QUE EXISTA AFD ==========
+    """Muestra las evaluaciones del AFD activo en orden cronológico."""
+
+    # Sin un AFD activo no existe un historial que consultar
     if afd is None:
-        print("\nError: Primero debe crear o cargar un autómata.")
         return
-    
-    # ========== VERIFICAR SI HAY HISTORIAL ==========
-    if len(afd.historial) == 0:
-        print("\nNo hay evaluaciones registradas en el historial.")
+
+    # Avisamos cuando todavía no se ha evaluado ninguna cadena
+    if not afd.historial:
+        print("\nNo hay evaluaciones registradas.")
         return
-    
-    # ========== MOSTRAR HISTORIAL ==========
+
     print("\n--- HISTORIAL DE EVALUACIONES ---")
-    print(f"Total de evaluaciones: {len(afd.historial)}\n")
-    
-    # Mostrar cada evaluación registrada
+    # Recorremos los registros y los numeramos desde uno
     for indice, registro in enumerate(afd.historial, start=1):
         print(
             str(indice)
@@ -192,156 +190,226 @@ def mostrar_historial(afd):
         )
 
 
-def crear_o_cargar_otro():
-    """
-    Menú para crear o cargar un nuevo AFD en memoria.
-    Reemplaza el AFD actual.
-    """
-    print("\n--- CREAR O CARGAR AFD ---")
-    print("1. Crear manualmente")
-    print("2. Cargar desde archivo .txt")
-    opcion = input("Seleccione una opción (1-2): ").strip()
-    
+def mostrar_analisis(afd):
+    """Presenta accesibilidad, estados inútiles y posible lenguaje vacío."""
+
+    # El análisis solamente puede realizarse sobre un AFD válido
+    if not asegurar_afd_valido(afd):
+        return
+
+    # Obtenemos los conjuntos calculados por el validador
+    analisis = ValidadorAFD.analizar_estructura(afd)
+    print("\n--- ANÁLISIS ESTRUCTURAL ---")
+    print("Estados alcanzables:", _formatear_conjunto(analisis["alcanzables"]))
+    print("Estados inaccesibles:", _formatear_conjunto(analisis["inaccesibles"]))
+    print(
+        "Estados finales alcanzables:",
+        _formatear_conjunto(analisis["finales_alcanzables"]),
+    )
+    # Si ningún estado final es alcanzable, ninguna cadena puede aceptarse
+    if analisis["lenguaje_posiblemente_vacio"]:
+        print("El lenguaje es vacío: no existe un estado final alcanzable.")
+    else:
+        print("El lenguaje no es vacío: existe al menos un estado final alcanzable.")
+
+
+def crear_o_cargar(opcion=None):
+    """Centraliza las cuatro formas de ingresar un autómata."""
+
+    # Si no recibimos una opción, mostramos un pequeño menú de carga
+    if opcion is None:
+        print("\n1. Crear AFD manualmente")
+        print("2. Cargar AFD desde archivo")
+        print("3. Crear AFND manualmente")
+        print("4. Cargar AFND desde archivo")
+        opcion = input("Seleccione una opción (1-4): ").strip()
+
+    # Creamos manualmente un AFD
     if opcion == "1":
-        # Crear AFD manualmente
         return CargadorAFD.crear_manual()
-    
+
+    # Cargamos la definición de un AFD desde un archivo
     if opcion == "2":
-        # Cargar AFD desde archivo
-        ruta = input("Ruta del archivo .txt: ").strip()
+        ruta = input("Ruta del archivo AFD: ").strip()
         return CargadorAFD.cargar_archivo(ruta)
-    
-    print("Error: Opción inválida.")
+    # Creamos manualmente un AFND
+    if opcion == "3":
+        return CargadorAFND.crear_manual()
+
+    # Cargamos la definición de un AFND desde un archivo
+    if opcion == "4":
+        ruta = input("Ruta del archivo AFND: ").strip()
+        return CargadorAFND.cargar_archivo(ruta)
+
+    print("Error: opción inválida.")
     return None
 
 
-def mostrar_menu():
-    """
-    Muestra el menú principal del programa con todas las opciones disponibles.
-    """
-    print("\n" + "=" * 60)
-    print(" SIMULADOR DE AUTÓMATA FINITO DETERMINISTA (AFD)".center(60))
-    print("=" * 60)
-    print("\nOpciones disponibles:")
-    print("\n  Gestión del AFD:")
-    print("    1. Crear un AFD manualmente")
-    print("    2. Cargar un AFD desde un archivo .txt")
-    print("    9. Cargar o crear otro autómata (reemplazar el actual)")
-    print("\n  Visualización:")
-    print("    3. Mostrar la definición formal del AFD (Q, Σ, q0, F, δ)")
-    print("    4. Mostrar la tabla de transiciones")
-    print("\n  Validación:")
-    print("    5. Validar la estructura del autómata")
-    print("\n  Evaluación:")
-    print("    6. Evaluar una cadena individual")
-    print("    7. Evaluar múltiples cadenas desde un archivo")
-    print("\n  Historial:")
-    print("    8. Consultar el historial de evaluaciones")
-    print("\n  Salida:")
-    print("   10. Salir del programa")
-    print()
+def preparar_nuevo_automata(automata):
+    """Valida un AFND, muestra su tabla y ejecuta la conversión automática."""
+
+    # Un AFD cargado directamente no necesita ninguna conversión
+    if not isinstance(automata, AFND):
+        return None, {}
+
+    # Validamos el AFND antes de intentar convertirlo
+    valido, errores = ValidadorAFND.validar(automata)
+    if not valido:
+        print("\nEl AFND fue cargado, pero contiene errores:")
+        _mostrar_lista_errores(errores)
+        return None, {}
+
+    # Mostramos la tabla del AFND válido antes de realizar la conversión
+    automata.mostrar_tabla_transicion()
+
+    # Aplicamos el algoritmo de construcción de subconjuntos
+    afd, equivalencias, errores = ConvertidorAFND.convertir(automata)
+    if errores:
+        print("\nNo fue posible realizar la conversión automática:")
+        _mostrar_lista_errores(errores)
+        return None, {}
+
+    # Informamos cuántos macroestados fueron creados en el AFD equivalente
+    print("Conversión automática completada. Macroestados:", len(equivalencias))
+    return afd, equivalencias
+
+
+def _mostrar_lista_errores(errores):
+    """Muestra errores o confirma que no se encontró ninguno."""
+
+    # Una lista vacía significa que la estructura pasó la validación
+    if not errores:
+        print("No se encontraron errores estructurales.")
+        return
+    # Imprimimos cada error por separado para facilitar su lectura
+    for error in errores:
+        print("-", error)
+
+
+def _formatear_conjunto(elementos):
+    """Da una salida estable para los resultados del análisis."""
+
+    # Representamos un conjunto sin elementos mediante el símbolo vacío
+    if not elementos:
+        return "∅"
+
+    # Ordenamos los elementos y los mostramos separados por comas
+    return "{" + ", ".join(sorted(elementos)) + "}"
 
 
 def main():
-    """
-    Función principal: menú interactivo que gestiona el programa.
-    Permite crear/cargar AFD, validarlos, y evaluar cadenas.
-    """
-    afd_actual = None  # Almacena el AFD en memoria durante la sesión
-    
-    print("""
-    ╔══════════════════════════════════════════════════════════╗
-    ║   BIENVENIDO AL SIMULADOR DE AFD                         ║
-    ║   Lenguajes Formales - Proyecto 1                        ║
-    ║    Desarrollado por: Gerber Perez y Marco Donadio        ║
-    ╚══════════════════════════════════════════════════════════╝
-    """)
-    
+    """Mantiene el autómata original y, cuando aplica, su AFD equivalente."""
+
+    # Guarda el AFD o AFND que el usuario cargó originalmente
+    automata_actual = None
+
+    # Guarda el resultado de convertir un AFND en un AFD
+    afd_generado = None
+
+    # Relaciona cada macroestado del AFD con un subconjunto del AFND
+    equivalencias = {}
+
+    print("\nBienvenido al motor de AFD y AFND - Proyecto 2")
+
+    # El menú se repite hasta que el usuario seleccione la opción de salir
     while True:
-        # ========== MOSTRAR MENÚ ==========
         mostrar_menu()
-        opcion = input("Seleccione una opción (1-10): ").strip()
-        
-        # ========== OPCIÓN 1: CREAR MANUALMENTE ==========
-        if opcion == "1":
-            afd_actual = CargadorAFD.crear_manual()
-            print("\n✅ AFD creado correctamente.")
-        
-        # ========== OPCIÓN 2: CARGAR DESDE ARCHIVO ==========
-        elif opcion == "2":
-            ruta = input("\nRuta del archivo .txt: ").strip()
-            nuevo_afd = CargadorAFD.cargar_archivo(ruta)
-            
-            if nuevo_afd is not None:
-                afd_actual = nuevo_afd
-                print("\n✅ AFD cargado correctamente.")
-        
-        # ========== OPCIÓN 3: MOSTRAR DEFINICIÓN FORMAL ==========
-        elif opcion == "3":
-            if afd_actual is None:
-                print("\nError: Primero debe crear o cargar un autómata.")
-            else:
-                afd_actual.mostrar_definicion_formal()
-        
-        # ========== OPCIÓN 4: MOSTRAR TABLA DE TRANSICIONES ==========
-        elif opcion == "4":
-            if afd_actual is None:
-                print("\nError: Primero debe crear o cargar un autómata.")
-            else:
-                afd_actual.mostrar_tabla_transicion()
-        
-        # ========== OPCIÓN 5: VALIDAR ESTRUCTURA ==========
+        opcion = input("Seleccione una opción (1-15): ").strip()
+
+        # Opciones 1 a 4: crear o cargar un nuevo autómata
+        if opcion in ("1", "2", "3", "4"):
+            nuevo = crear_o_cargar(opcion)
+
+            # Solo reemplazamos los datos actuales si la carga fue correcta
+            if nuevo is not None:
+                automata_actual = nuevo
+                afd_generado, equivalencias = preparar_nuevo_automata(nuevo)
+                print("\nAutómata cargado. Los datos anteriores fueron limpiados.")
+
+        # Opción 5: mostrar el autómata cargado originalmente
         elif opcion == "5":
-            if afd_actual is None:
-                print("\nError: Primero debe crear o cargar un autómata.")
+            if automata_actual is None:
+                print("\nError: primero debe crear o cargar un autómata.")
             else:
-                mostrar_validacion(afd_actual)
-        
-        # ========== OPCIÓN 6: EVALUAR UNA CADENA ==========
+                automata_actual.mostrar_definicion_formal()
+                automata_actual.mostrar_tabla_transicion()
+
+        # Opción 6: validar según sea AFD o AFND
         elif opcion == "6":
-            if asegurar_afd_valido(afd_actual):
-                cadena = input("\nIngrese la cadena a evaluar: ")
-                aceptada, resultado = SimuladorAFD.evaluar(
-                    afd_actual, cadena, mostrar_traza=True
-                )
-                
-                # Si resultado no es "Aceptada" ni "Rechazada", es un error
-                if resultado not in ("Aceptada", "Rechazada"):
-                    print("\nError:", resultado)
-        
-        # ========== OPCIÓN 7: EVALUAR ARCHIVO DE CADENAS ==========
+            mostrar_validacion(automata_actual)
+
+        # Opción 7: volver a convertir el AFND cargado
         elif opcion == "7":
-            evaluar_archivo_cadenas(afd_actual)
-        
-        # ========== OPCIÓN 8: MOSTRAR HISTORIAL ==========
+            if not isinstance(automata_actual, AFND):
+                print("\nError: debe existir un AFND cargado para convertirlo.")
+            else:
+                # Ejecutamos la conversión sin perder el AFND original
+                afd_nuevo, nuevas_equivalencias, errores = ConvertidorAFND.convertir(
+                    automata_actual
+                )
+                if errores:
+                    print("\nNo fue posible convertir el AFND:")
+                    _mostrar_lista_errores(errores)
+                else:
+                    afd_generado = afd_nuevo
+                    equivalencias = nuevas_equivalencias
+                    print("\nAFND convertido correctamente en un AFD equivalente.")
+                    print("Macroestados generados:", len(equivalencias))
+
+        # Opción 8: mostrar qué subconjunto representa cada macroestado
         elif opcion == "8":
-            mostrar_historial(afd_actual)
-        
-        # ========== OPCIÓN 9: CARGAR OTRO AFD ==========
+            ConvertidorAFND.mostrar_equivalencias(equivalencias)
+
+        # Opción 9: mostrar únicamente la tabla del AFD equivalente
         elif opcion == "9":
-            nuevo_afd = crear_o_cargar_otro()
-            
-            if nuevo_afd is not None:
-                afd_actual = nuevo_afd
-                print("\n✅ Nuevo autómata cargado en memoria (reemplazó al anterior).")
-        
-        # ========== OPCIÓN 10: SALIR ==========
+            if afd_generado is None:
+                print("\nError: todavía no se ha generado un AFD desde un AFND.")
+            else:
+                afd_generado.mostrar_tabla_transicion(
+                    "TABLA DE TRANSICIONES DEL AFD GENERADO"
+                )
+
+        # Opción 10: evaluar una cadena individual y mostrar su traza
         elif opcion == "10":
-            print("""
-    ╔══════════════════════════════════════════════════════════╗
-    ║   Gracias por usar el Simulador de AFD.                  ║
-    ║   Programa finalizado.                                   ║
-    ╚══════════════════════════════════════════════════════════╝
-            """)
+            afd = obtener_afd_operativo(automata_actual, afd_generado)
+            if asegurar_afd_valido(afd):
+                cadena = input("Ingrese la cadena (Enter representa ε): ")
+                aceptada, resultado = SimuladorAFD.evaluar(afd, cadena, True)
+                if resultado not in ("Aceptada", "Rechazada"):
+                    print("Error:", resultado)
+
+        # Opción 11: evaluar todas las cadenas contenidas en un archivo
+        elif opcion == "11":
+            afd = obtener_afd_operativo(automata_actual, afd_generado)
+            evaluar_archivo_cadenas(afd)
+
+        # Opción 12: consultar los resultados acumulados durante la sesión
+        elif opcion == "12":
+            afd = obtener_afd_operativo(automata_actual, afd_generado)
+            mostrar_historial(afd)
+
+        # Opción 13: calcular estados alcanzables, inaccesibles y finales útiles
+        elif opcion == "13":
+            afd = obtener_afd_operativo(automata_actual, afd_generado)
+            mostrar_analisis(afd)
+
+        # Opción 14: reemplazar el autómata y limpiar los datos anteriores
+        elif opcion == "14":
+            nuevo = crear_o_cargar()
+            if nuevo is not None:
+                automata_actual = nuevo
+                afd_generado, equivalencias = preparar_nuevo_automata(nuevo)
+                print("\nNuevo autómata cargado; sesión anterior limpiada.")
+
+        # Opción 15: finalizar el ciclo principal del programa
+        elif opcion == "15":
+            print("\nPrograma finalizado.")
             break
-        
-        # ========== OPCIÓN INVÁLIDA ==========
+
         else:
-            print("\nError: Opción inválida. Ingrese un número del 1 al 10.")
+            print("\nError: ingrese un número del 1 al 15.")
 
 
-# ========== PUNTO DE ENTRADA DEL PROGRAMA ==========
-# Este bloque asegura que main() solo se ejecute cuando se corre el script directamente,
-# no cuando se importa como módulo en otro archivo
+# Este bloque evita que el menú se ejecute al importar este archivo
 if __name__ == "__main__":
     main()
