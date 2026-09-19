@@ -61,6 +61,10 @@ class AFND:
             estados_destino: conjunto de posibles estados de llegada
         """
 
+        # Rechazamos otros tipos antes de modificar las transiciones.
+        if not isinstance(estados_destino, set):
+            raise TypeError("Los estados destino deben ser un conjunto.")
+
         # Creamos una tupla (estado, símbolo) como clave del diccionario
         clave = (estado_origen, simbolo)
 

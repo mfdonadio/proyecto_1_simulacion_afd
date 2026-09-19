@@ -1,79 +1,224 @@
-"""
-Creacion manual y carga del archivo de AFND
-"""
 import re
 from AFND import AFND
 from CargadorAFD import CargadorAFD
 from ValidadorAFND import ValidadorAFND
 
 class CargadorAFND:
-    #Construye AFND cuyos destinos se almacenan como conjuntos #
+    """
+Gestiona la creación de AFND de dos formas:
+1. Creación manual: el usuario ingresa manualmente Q, Σ, q0, F y δ
+2. Carga desde archivo: lee un archivo .txt con formato específico
+
+Formato de archivo esperado:
+├─ NOMBRE=MiAFND
+├─ TIPO=AFND
+├─ ESTADOS=q0,q1,q2
+├─ ALFABETO=a,b
+├─ INICIAL=q0
+├─ FINALES=q2
+├─ TRANSICIONES:
+├─ q0,a,q0|q1 ---> la barra vertical separa los diferentes destinos
+├─ q0,b,q0
+├─ q1,a,q2
+└─ q1,b,q1
+    """
+
+        # Identificamos los encabezados y sus valores
     _PATRON_ENCABEZADO = re.compile(
-        r"^(?P<clave>NOMBRE|TIPO|ESTADOS|ALFABETO|INICIAL|FINALES)=(?P<valor>.*)$"
+        r"^(?P<clave>NOMBRE|TIPO|ESTADOS|ALFABETO|INICIAL|FINALES)="
+        r"(?P<valor>.*)$"
     )
+
+    # Separamos el origen, símbolo y destinos de cada transición
     _PATRON_TRANSICION = re.compile(
-        r"^(?P<origen>[^,\s]+),(?P<simbolo>[^,\s]+),(?P<destinos>[^,\s]+)$"
+        r"^(?P<origen>[^,\s]+),"
+        r"(?P<simbolo>[^,\s]+),"
+        r"(?P<destinos>[^,\s]+)$"
     )
+
+    # Representaciones permitidas para un conjunto vacío
     _VACIO = {"∅", "{}"}
 
+
+    @staticmethod
+    def pedir_conjunto_afnd(mensaje, permitir_vacio=False):
+        """
+        Solicita al usuario un conjunto de elementos separados por comas.
+        Valida que no haya elementos vacíos ni duplicados.
+        
+        Parámetros:
+            mensaje: Texto que se muestra al usuario pidiendo entrada
+            permitir_vacio: Si True, acepta entrada vacía; si False, requiere al menos un elemento
+        
+        Retorna:
+            Un set con los elementos ingresados, o set vacío si se permite y el usuario ingresa vacío
+        
+        Ejemplo:
+            pedir_conjunto("Estados: ") -> {"q0", "q1", "q2"}
+        """
+        
+        while True:
+            # Obtenemos y limpiamos la entrada
+            entrada = input(mensaje).strip()
+            
+            # ========== CASO: ENTRADA VACÍA ==========
+            # Si la entrada está vacía y se permite, retornamos set vacío
+            if entrada == "" and permitir_vacio:
+                return set()
+            
+            # Si la entrada está vacía pero NO se permite, pedimos de nuevo
+            if entrada == "":
+                print("La entrada no puede estar vacia.")
+                continue
+            
+            # ========== PROCESAR ENTRADA ==========
+            # Dividimos por comas y limpiamos espacios de cada elemento
+            partes = entrada.split(",")
+            elementos = []
+            hay_vacios = False
+            
+            # Validar cada elemento después de dividir
+            for parte in partes:
+                elemento = parte.strip()
+                
+                # Detectar elementos vacíos (ej: "q0,,q1")
+                if elemento == "":
+                    hay_vacios = True
+                    break
+                
+                elementos.append(elemento)
+            
+            # ========== VALIDACIÓN: SIN ESPACIOS VACÍOS ==========
+            if hay_vacios:
+                print("No se permiten elementos vacios entre comas.")
+                continue
+            
+            # ========== VALIDACIÓN: SIN DUPLICADOS ==========
+            # Comparamos cantidad de elementos con cantidad de elementos únicos
+            if len(elementos) != len(set(elementos)):
+                print("No se permiten estados o símbolos duplicados.")
+                continue
+            
+            # Si pasó todas las validaciones, retornamos el set
+            return set(elementos)
+    
     @staticmethod
     def crear_manual():
-        #Solicita los componentes y todos los conjuntos destino del AFND#
-        print ("\n=====CREACION MANUAL DEL AFND====")
-        afnd=AFND()
-
-        while afnd.nombre == "":
-            afnd.nombre= input("Nombre del automata: ").strip()
-            if afnd.nombre=="":
-                print ("El nombre no puede estar vacio.")
-
-        afnd.estados=CargadorAFD.pedir_conjunto(
-            "Estados separados por coma (ej. q0, q1, q2): "
+        """
+        Guía al usuario a través de la creación manual de un AFND.
+        Solicita los 5 componentes: Q, Σ, q0, F, δ
+        """
+        print("\n=== CREACION MANUAL DEL AFND ===")
+        afnd = AFND()
+        
+        # ========== PASO 1: NOMBRE DEL AFND ==========
+        # Solicitar nombre hasta que sea válido
+        while afnd.nombre.strip() == "":
+            afnd.nombre = input("Nombre del automata: ").strip()
+            if afnd.nombre == "":
+                print("El nombre no puede estar vacio.")
+        
+        # ========== PASO 2: CONJUNTO DE ESTADOS (Q) ==========
+        # Ejemplo: q0,q1,q2
+        afnd.estados = CargadorAFND.pedir_conjunto_afnd(
+            "Estados separados por coma (ej. q0,q1,q2): "
         )
-
+        
+        # ========== PASO 3: ALFABETO (Σ) ==========
+        # Ejemplo: a,b
         while True:
-            alfabeto = CargadorAFD.pedir_conjunto(
+            alfabeto = CargadorAFND.pedir_conjunto_afnd(
                 "Simbolos del alfabeto separados por coma (ej. a,b): "
             )
-            error= ValidadorAFND.validar_alfabeto(alfabeto)
-            if error is None:
-                afnd.alfabeto=alfabeto
-                break
-            print(error)
 
+            contiene_epsilon = False
+            simbolos_largos = []
+
+            for simbolo in alfabeto:
+                if ValidadorAFND.es_simbolo_epsilon(simbolo):
+                    contiene_epsilon = True
+                elif len(simbolo) != 1:
+                    simbolos_largos.append(simbolo)
+
+            if contiene_epsilon:
+                print(
+                    "Error: un AFND de esta fase no puede contener transiciones "
+                    "epsilon o símbolos que representen la cadena vacía."
+                )
+                continue
+
+            if len(simbolos_largos) > 0:
+                print(
+                    "Error: cada símbolo debe tener exactamente un carácter."
+                )
+                print("Símbolos inválidos:", simbolos_largos)
+                continue
+
+            afnd.alfabeto = alfabeto
+            break
+                
+        # ========== PASO 4: ESTADO INICIAL (q0) ==========
+        # Debe ser un elemento de Q
         while True:
-            inicial= input("Estado inicial: ").strip()
+            inicial = input("Estado inicial (debe estar en Q): ").strip()
+            
             if inicial in afnd.estados:
-                afnd.estado_inicial=inicial
+                afnd.estado_inicial = inicial
                 break
-            print("El estado inicial debe pertenecer a Q.")
-
+            
+            print("Error: el estado inicial debe pertenecer al conjunto Q.")
+        
+        # ========== PASO 5: ESTADOS FINALES (F) ==========
+        # Deben ser un subconjunto de Q. Pueden estar vacíos.
         while True:
-            finales=CargadorAFD.pedir_conjunto(
-                "Estados finales (Enter si no hay): ", permitir_vacio=True
+            finales = CargadorAFND.pedir_conjunto_afnd(
+                "Estados finales separados por coma (Enter si no hay): ",
+                permitir_vacio=True,
             )
+            
+            # Verificar que todos los estados finales estén en Q
             if finales.issubset(afnd.estados):
-                afnd.estados_finales=finales
+                afnd.estados_finales = finales
                 break
-            print ("Todos los estados finales deben pertenecer a Q. ")
+            
+            print("Error: todos los estados finales deben pertenecer a Q.")
+        
+        # ========== PASO 6: FUNCIÓN DE TRANSICIÓN (δ) ==========
+        print("\nIngrese la función de transición.")
+        print("Para cada pareja (estado, símbolo), ingrese el estado(s) destino.")
+        print("Puede indicar varios destinos o un conjunto vacío.\n")
+        
+        # Solicitar las transiciones para CADA combinación (estado, símbolo)
+        # Cada pareja admite un conjunto de destinos, incluso vacío.
+        print("\nIngrese la función de transición.")
+        print("Use | entre destinos o ∅ cuando no exista ninguno.")
 
-        print ("\nUse | entre multiples destinos o ∅ cuando no exista ninguno.")
         for estado in sorted(afnd.estados):
-            for simbolo in sorted (afnd.alfabeto):
+            for simbolo in sorted(afnd.alfabeto):
                 while True:
-                    texto =input(
+                    texto = input(
                         "δ(" + estado + ", " + simbolo + ") = "
                     ).strip()
-                    destinos, error= CargadorAFND.convertir_destinos(texto)
+
+                    # Convertimos la entrada en un conjunto de destinos
+                    destinos, error = CargadorAFND.convertir_destinos(texto)
+
                     if error is not None:
                         print(error)
-                    elif destinos.issubset(afnd.estados):
-                        afnd.agregar_transicion(estado,simbolo, destinos)
-                        break
-                    else:
+                        continue
+
+                    # Todos los destinos deben pertenecer a Q
+                    if not destinos.issubset(afnd.estados):
                         print("Todos los destinos deben pertenecer a Q.")
+                        continue
+
+                    # Guardamos el conjunto completo en una sola llamada
+                    afnd.agregar_transicion(estado, simbolo, destinos)
+                    break
+        
         return afnd
 
+    
     @staticmethod
     def cargar_archivo(ruta):
         """Carga un AFND y muestra los errores encontrados."""

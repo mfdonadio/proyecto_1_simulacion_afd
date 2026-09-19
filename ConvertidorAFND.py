@@ -161,7 +161,9 @@ class ConvertidorAFND:
 
         # Validamos el AFD generado para confirmar que sea
         # determinista, completo y estructuralmente válido
-        ValidadorAFD.validar(afd)
+        valido, errores = ValidadorAFD.validar(afd)
+        if not valido:
+            return None, {}, errores
 
         # Retornamos el AFD, su tabla de equivalencias
         # y una lista vacía porque la conversión fue exitosa

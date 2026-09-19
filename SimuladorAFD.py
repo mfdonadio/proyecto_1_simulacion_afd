@@ -1,3 +1,6 @@
+from ValidadorAFD import ValidadorAFD
+
+
 class SimuladorAFD:
     """
     Simula la ejecución del AFD sobre cadenas de entrada.
@@ -24,6 +27,14 @@ class SimuladorAFD:
         # El AFD debe haber pasado validación antes de usarlo
         if not afd.es_valido:
             return False, "El AFD debe validarse antes de evaluar cadenas."
+
+        # Revisamos cambios directos que no hayan invalidado la marca anterior.
+        valido, errores = ValidadorAFD.validar(afd)
+        if not valido:
+            return False, "El AFD tiene una estructura inválida: " + "; ".join(errores)
+
+        if not isinstance(cadena, str):
+            return False, "La cadena debe ser de tipo texto."
         
         # ========== VALIDAR SÍMBOLOS DE LA CADENA ==========
         # Todos los símbolos de la cadena deben estar en el alfabeto
@@ -48,6 +59,9 @@ class SimuladorAFD:
         # Para cada símbolo, seguimos la transición correspondiente
         for simbolo in cadena:
             # Buscamos el siguiente estado: δ(estado_actual, símbolo)
+            if (estado_actual, simbolo) not in afd.transiciones:
+                afd.es_valido = False
+                return False, "El AFD tiene una estructura inválida: falta una transición."
             siguiente_estado = afd.transiciones[(estado_actual, simbolo)]
             
             # Mostramos la transición si se pide traza

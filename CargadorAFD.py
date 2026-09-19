@@ -225,10 +225,9 @@ class CargadorAFD:
         
         # ========== PASO 1: LEER EL ARCHIVO ==========
         try:
-            archivo = open(ruta, "r", encoding="utf-8")
-            lineas = archivo.readlines()
-            archivo.close()
-        except Exception as error:
+            with open(ruta, "r", encoding="utf-8-sig") as archivo:
+                lineas = archivo.readlines()
+        except (OSError, UnicodeError) as error:
             print("Error: No fue posible abrir el archivo:", error)
             return None
         
@@ -245,7 +244,7 @@ class CargadorAFD:
             print("Se necesitan 6 líneas mínimo (encabezados + TRANSICIONES:)")
             return None
         
-        afd = AFD.AFD()
+        afd = AFD()
         errores = []
         
         # ========== PASO 3: VALIDAR ENCABEZADOS ==========
@@ -334,6 +333,20 @@ class CargadorAFD:
         afd.estados = estados
         afd.alfabeto = alfabeto
         afd.estados_finales = finales
+
+        # El estado inicial debe pertenecer a Q
+        if afd.estado_inicial not in afd.estados:
+            errores.append("El estado inicial no pertenece a Q.")
+
+        # Todos los estados finales deben pertenecer a Q
+        if not afd.estados_finales.issubset(afd.estados):
+            errores.append("Existen estados finales que no pertenecen a Q.")
+
+        if errores:
+            print("\nErrores en los datos:")
+            for error in errores:
+                print("-", error)
+            return None
         
         # ========== PASO 5: PROCESAR TRANSICIONES ==========
         # Las líneas después de "TRANSICIONES:" contienen las transiciones

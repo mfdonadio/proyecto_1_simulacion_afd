@@ -142,9 +142,8 @@ def evaluar_archivo_cadenas(afd):
 
     # Intentamos abrir y leer todas las líneas del archivo
     try:
-        archivo = open(ruta, "r", encoding="utf-8")
-        lineas = archivo.readlines()
-        archivo.close()
+        with open(ruta, "r", encoding="utf-8-sig") as archivo:
+            lineas = archivo.readlines()
     except (OSError, UnicodeError) as error:
         print("Error: no fue posible abrir el archivo:", error)
         return
@@ -363,6 +362,9 @@ def main():
 
         # Opción 9: mostrar únicamente la tabla del AFD equivalente
         elif opcion == "9":
+            if afd_generado is None:
+                print("\nError: todavía no existe un AFD generado; convierta un AFND primero.")
+                continue
             print("\n--- TABLA DE TRANSICIONES DEL AFD GENERADO ---")
             afd_generado.mostrar_tabla_transicion()
 

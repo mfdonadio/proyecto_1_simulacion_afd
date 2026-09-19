@@ -10,15 +10,30 @@ class ValidadorAFND:
     @staticmethod
     def es_simbolo_epsilon(simbolo):
         """Indica si el texto representa una transicion epsilon."""
-        return simbolo.strip().lower() in ValidadorAFND._SIMBOLOS_EPSILON
+        return isinstance(simbolo, str) and simbolo.strip().lower() in ValidadorAFND._SIMBOLOS_EPSILON
 
     #Validamos el AFND
     @staticmethod
     def validar(afnd):
-        """Retorna si el AFND es valido y tambien una lita de los posibles errores encontrados luego de revisar toda la estructura."""
+        """Retorna si el AFND es valido y tambien una lista de los posibles errores encontrados luego de revisar toda la estructura."""
 
         #Inicializamos la lista de errores
         errores = []
+        afnd.es_valido = False
+
+        # Comprobamos los tipos antes de recorrer los componentes.
+        for nombre in ("estados", "alfabeto", "estados_finales"):
+            componente = getattr(afnd, nombre)
+            if not isinstance(componente, set):
+                errores.append("El componente " + nombre + " debe ser un conjunto.")
+            elif any(not isinstance(elemento, str) for elemento in componente):
+                errores.append("Los elementos de " + nombre + " deben ser texto.")
+        if not isinstance(afnd.transiciones, dict):
+            errores.append("Las transiciones deben ser un diccionario.")
+        if not isinstance(afnd.estado_inicial, str):
+            errores.append("El estado inicial debe ser texto.")
+        if errores:
+            return False, errores
 
         #Validamos que el AFND tenga un nombre
         if not isinstance(afnd.nombre, str) or afnd.nombre.strip() == "":
@@ -27,6 +42,9 @@ class ValidadorAFND:
         #Validamos los estados del AFND
         if not afnd.estados:
             errores.append("El conjunto de estados Q no puede estar vacio.")
+        for estado in afnd.estados:
+            if not estado.strip():
+                errores.append("Los nombres de los estados no pueden estar vacíos.")
 
         #Validamos el alfabeto del AFND
         if not afnd.alfabeto:
@@ -38,6 +56,8 @@ class ValidadorAFND:
                 errores.append("Las transiciones epsilon no estan permitidas en la fase 2.")
             elif len(simbolo) != 1:
                 errores.append("El simbolo " + simbolo + " debe tener exactamente un caracter.")
+            elif simbolo.isspace():
+                errores.append("No pueden existir espacios en los simbolos.")
 
         #Validamos el estado inicial del AFND
         if afnd.estado_inicial not in afnd.estados:
@@ -56,6 +76,9 @@ class ValidadorAFND:
 
             #Obtenemos el estado origen y el simbolo de la transicion
             origen, simbolo = clave
+            if not isinstance(origen, str) or not isinstance(simbolo, str):
+                errores.append("El origen y el símbolo de una transición deben ser texto.")
+                continue
 
             #Si el origen no pertene al conjunto de estados...
             if origen not in afnd.estados:
@@ -72,12 +95,14 @@ class ValidadorAFND:
             #Si los destinos no son un conjunto...
             if not isinstance(destinos, set):
                 errores.append("Los destinos de (" + origen + ", " + simbolo + ") deben ser un conjunto.")
-            continue
+                continue
 
-        #Para cada destino de la transicion, verificamos que pertenezca al conjunto de estados
-        for destino in sorted(destinos):
-            if destino not in afnd.estados:
-                errores.append("La transición apunta al estado inexistente '" + destino + "'.")
+            #Para cada destino de la transicion, verificamos que pertenezca al conjunto de estados
+            for destino in destinos:
+                if not isinstance(destino, str):
+                    errores.append("Los estados destino deben ser texto.")
+                elif destino not in afnd.estados:
+                    errores.append("La transición apunta al estado inexistente '" + destino + "'.")
 
         #Si len(errores) > 0, el AFND no es valido. Por el contrario, si len(errores) == 0, el AFND es valido.
         afnd.es_valido = len(errores) == 0
@@ -85,11 +110,15 @@ class ValidadorAFND:
 
     @staticmethod
     def validar_alfabeto(alfabeto):
+        if not isinstance(alfabeto, set):
+            return "El alfabeto debe ser un conjunto."
         #Verificamos que exista un alfabeto
         if not alfabeto:
             return "El alfabeto no puede estar vacio."
 
         for simbolo in alfabeto:
+            if not isinstance(simbolo, str):
+                return "Los símbolos deben ser texto."
 
             #Verificamos que no sean epsilon
             if ValidadorAFND.es_simbolo_epsilon(simbolo):
