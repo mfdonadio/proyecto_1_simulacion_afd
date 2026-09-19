@@ -23,6 +23,7 @@ def mostrar_menu():
     # Creamos el encabezado principal del programa
     print("\n" + "=" * 68)
     print("MOTOR DE VALIDACIÓN Y CONVERSIÓN DE AUTÓMATAS".center(68))
+    print("elaborado por: Gerber Perez y Marco Donadio".center(68))
     print("=" * 68)
 
     # Mostramos todas las opciones disponibles para el usuario
@@ -362,12 +363,8 @@ def main():
 
         # Opción 9: mostrar únicamente la tabla del AFD equivalente
         elif opcion == "9":
-            if afd_generado is None:
-                print("\nError: todavía no se ha generado un AFD desde un AFND.")
-            else:
-                afd_generado.mostrar_tabla_transicion(
-                    "TABLA DE TRANSICIONES DEL AFD GENERADO"
-                )
+            print("\n--- TABLA DE TRANSICIONES DEL AFD GENERADO ---")
+            afd_generado.mostrar_tabla_transicion()
 
         # Opción 10: evaluar una cadena individual y mostrar su traza
         elif opcion == "10":
@@ -408,8 +405,6 @@ def main():
 
         else:
             print("\nError: ingrese un número del 1 al 15.")
-
-
-# Este bloque evita que el menú se ejecute al importar este archivo
+            
 if __name__ == "__main__":
     main()

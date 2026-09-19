@@ -1,6 +1,6 @@
 import re
-import ValidadorAFD
-import AFD
+from ValidadorAFD import ValidadorAFD
+from AFD import AFD
 
 class CargadorAFD:
     """
@@ -245,7 +245,7 @@ class CargadorAFD:
             print("Se necesitan 6 líneas mínimo (encabezados + TRANSICIONES:)")
             return None
         
-        afd = AFD()
+        afd = AFD.AFD()
         errores = []
         
         # ========== PASO 3: VALIDAR ENCABEZADOS ==========
@@ -290,13 +290,13 @@ class CargadorAFD:
         finales_texto = valores_encabezado["FINALES"]
         
         # Convertir strings a sets, validando duplicados
-        estados, error_estados = CargadorAFD._convertir_lista_archivo(
+        estados, error_estados = CargadorAFD.convertir_lista_archivo(
             estados_texto, "ESTADOS", permitir_vacio=False
         )
-        alfabeto, error_alfabeto = CargadorAFD._convertir_lista_archivo(
+        alfabeto, error_alfabeto = CargadorAFD.convertir_lista_archivo(
             alfabeto_texto, "ALFABETO", permitir_vacio=False
         )
-        finales, error_finales = CargadorAFD._convertir_lista_archivo(
+        finales, error_finales = CargadorAFD.convertir_lista_archivo(
             finales_texto, "FINALES", permitir_vacio=True
         )
 
@@ -448,7 +448,7 @@ class CargadorAFD:
         return afd
 
     @staticmethod
-    def _convertir_lista_archivo(texto, nombre_campo, permitir_vacio):
+    def convertir_lista_archivo(texto, nombre_campo, permitir_vacio):
         """
         Convierte un string separado por comas en un set.
         Valida que no haya elementos vacíos ni duplicados.

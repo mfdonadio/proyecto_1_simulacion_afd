@@ -27,15 +27,15 @@ class CargadorAFND:
             if afnd.nombre=="":
                 print ("El nombre no puede estar vacio.")
 
-        afnd.estados=CargadorAFND.pedir_conjunto(
+        afnd.estados=CargadorAFD.pedir_conjunto(
             "Estados separados por coma (ej. q0, q1, q2): "
         )
 
         while True:
-            alfabeto= CargadorAFD.pedir_conjunto(
+            alfabeto = CargadorAFD.pedir_conjunto(
                 "Simbolos del alfabeto separados por coma (ej. a,b): "
             )
-            error= CargadorAFD._validar_alfabeto(alfabeto)
+            error= ValidadorAFND.validar_alfabeto(alfabeto)
             if error is None:
                 afnd.alfabeto=alfabeto
                 break
@@ -57,14 +57,14 @@ class CargadorAFND:
                 break
             print ("Todos los estados finales deben pertenecer a Q. ")
 
-        print ("\n Use | entre multiples destinos o 0 cuando no exista ninguno.")
+        print ("\nUse | entre multiples destinos o ∅ cuando no exista ninguno.")
         for estado in sorted(afnd.estados):
             for simbolo in sorted (afnd.alfabeto):
                 while True:
                     texto =input(
                         "δ(" + estado + ", " + simbolo + ") = "
-                    ).strip
-                    destinos, error= CargadorAFND._convertir_destinos(texto)
+                    ).strip()
+                    destinos, error= CargadorAFND.convertir_destinos(texto)
                     if error is not None:
                         print(error)
                     elif destinos.issubset(afnd.estados):
@@ -74,155 +74,225 @@ class CargadorAFND:
                         print("Todos los destinos deben pertenecer a Q.")
         return afnd
 
-@staticmethod
-def cargar_archivo(ruta):
-    #Carga un AFND y reporta erorres con su numero de linea#
-    lineas= CargadorAFD._leer_lineas(ruta)
-    if lineas is None:
-        return None
+    @staticmethod
+    def cargar_archivo(ruta):
+        """Carga un AFND y muestra los errores encontrados."""
 
-    encabezados={}
-    transiciones=[]
-    errores=[]
-    en_transiciones=False
+        # Leemos el archivo y quitamos espacios en los extremos
+        try:
+            with open(ruta, "r", encoding="utf-8-sig") as archivo:
+                lineas = [linea.strip() for linea in archivo]
+        except (OSError, UnicodeError) as error:
+            print("No se pudo leer el archivo:", error)
+            return None
 
-    for indice, linea in enumerate(lineas,start=1):
-        if linea== "TRANSICIONES:":
-            if en_transiciones:
-                errores.append("Línea " + str(indice) + ": sección repetida.")
-                en_transiciones=True
+        # Guardamos los encabezados, transiciones y errores
+        encabezados = {}
+        transiciones = []
+        errores = []
+        en_transiciones = False
+
+        # Recorremos las líneas conservando su número
+        for numero_linea, linea in enumerate(lineas, start=1):
+
+            # Identificamos el inicio de las transiciones
+            if linea == "TRANSICIONES:":
+                if en_transiciones:
+                    errores.append(
+                        "Línea " + str(numero_linea)
+                        + ": sección TRANSICIONES repetida."
+                    )
+
+                en_transiciones = True
                 continue
-        if linea == "":
-                errores.append("Línea " + str(indice) + ": no se permiten líneas vacías.")
-                continue
-        if not en_transiciones:
-            coincidencia= CargadorAFND._PATRON_ENCABEZADO.fullmatch(linea)
-            if coincidencia is None:
+
+            # No permitimos líneas vacías
+            if linea == "":
                 errores.append(
-                        "Línea " + str(indice) + ": encabezado con formato inválido."
+                    "Línea " + str(numero_linea)
+                    + ": no se permiten líneas vacías."
                 )
-            else: 
-                clave= coincidencia.group("clave")
-                if clave in encabezados:
-                    errores.append("Línea " + str(indice) + ": encabezado repetido.")
-                else:
-                    encabezados[clave]= coincidencia.group("valor")
-                    continue
-                coincidencia=CargadorAFND._PATRON_TRANSICION.fullmatch(linea)
+                continue
+
+            # Antes de TRANSICIONES, procesamos los encabezados
+            if not en_transiciones:
+                coincidencia = (
+                    CargadorAFND._PATRON_ENCABEZADO.fullmatch(linea)
+                )
+
                 if coincidencia is None:
                     errores.append(
-                        "Línea "
-                    + str(indice)
-                    + ": use origen,símbolo,destino1|destino2 o ∅."
+                        "Línea " + str(numero_linea)
+                        + ": encabezado con formato inválido."
+                    )
+                    continue
+
+                clave = coincidencia.group("clave")
+                valor = coincidencia.group("valor").strip()
+
+                # Cada encabezado debe aparecer una sola vez
+                if clave in encabezados:
+                    errores.append(
+                        "Línea " + str(numero_linea)
+                        + ": encabezado repetido '" + clave + "'."
                     )
                 else:
-                    transiciones.append(
-                         (
-                        coincidencia.group("origen"),
-                        coincidencia.group("simbolo"),
-                        coincidencia.group("destinos"),
-                        indice,
-                        )
-                    )
-                requeridos= {"NOMBRE", "TIPO", "ESTADOS", "ALFABETO", "INICIAL", "FINALES"}
-                for clave in sorted(requeridos - set(encabezados)):
-                    errores.append("Falta el encabezado "+clave+".")
-                if not en_transiciones:
-                    errores.append("Falta la línea TRANSICIONES:.")
-                if encabezados.get("TIPO", "").upper() != "AFND":
-                    erorres.append("TIPO debe ser AFND.")
+                    encabezados[clave] = valor
 
-                if errores:
-                    CargadorAFD._mostrar_errores("sintaxis", errores)
-                    return None
-                afnd, errores= CargadorAFND._construir_afnd(encabezados,transiciones)
-                if errores:
-                    CargadorAFD._mostrar_errores("datos",errores)
-                    return None
-            return afnd
+                continue
 
-@staticmethod
-def _construir_afnd(encabezados, transiciones):
-        #Convierte los textos validados en conjuntos y transiciones.#
-        errores = []
-        afnd = AFND(encabezados["NOMBRE"].strip())
-        estados, error = CargadorAFD._convertir_lista(
-            encabezados["ESTADOS"], "ESTADOS", False
-        )
-        if error:
-            errores.append(error)
-        alfabeto, error = CargadorAFD._convertir_lista(
-            encabezados["ALFABETO"], "ALFABETO", False
-        )
-        if error:
-            errores.append(error)
-        finales, error = CargadorAFD._convertir_lista(
-            encabezados["FINALES"], "FINALES", True
-        )
-        if error:
-            errores.append(error)
+            # Después de TRANSICIONES, procesamos sus componentes
+            coincidencia = (
+                CargadorAFND._PATRON_TRANSICION.fullmatch(linea)
+            )
 
+            if coincidencia is None:
+                errores.append(
+                    "Línea " + str(numero_linea)
+                    + ": use origen,símbolo,destino1|destino2 "
+                    + "o origen,símbolo,∅."
+                )
+                continue
+
+            # Guardamos la transición para validarla después
+            transiciones.append(
+                (
+                    coincidencia.group("origen"),
+                    coincidencia.group("simbolo"),
+                    coincidencia.group("destinos"),
+                    numero_linea
+                )
+            )
+
+        # Revisamos los encabezados después de leer todo el archivo
+        requeridos = {
+            "NOMBRE",
+            "TIPO",
+            "ESTADOS",
+            "ALFABETO",
+            "INICIAL",
+            "FINALES"
+        }
+
+        for clave in sorted(requeridos - set(encabezados)):
+            errores.append("Falta el encabezado " + clave + ".")
+
+        if not en_transiciones:
+            errores.append("Falta la línea TRANSICIONES:.")
+
+        # Validamos los campos presentes sin repetir errores por ausencia
+        if "TIPO" in encabezados:
+            if encabezados["TIPO"].upper() != "AFND":
+                errores.append("TIPO debe ser AFND.")
+
+        if "NOMBRE" in encabezados:
+            if encabezados["NOMBRE"] == "":
+                errores.append("NOMBRE no puede estar vacío.")
+
+        # Si la estructura del archivo falla, cancelamos la carga
         if errores:
-            return None, errores
+            print("\nErrores de sintaxis:")
+            for error in errores:
+                print("- " + error)
+            return None
 
-        afnd.estados = estados
-        afnd.alfabeto = alfabeto
-        afnd.estado_inicial = encabezados["INICIAL"].strip()
-        afnd.estados_finales = finales
+        # Construimos el AFND con los datos leídos
+        afnd, errores = CargadorAFND.construir_afnd(
+            encabezados,
+            transiciones
+        )
 
-        error_alfabeto=CargadorAFD._validar_alfabeto(alfabeto)
-        if error_alfabeto:
-            errores.append(error_alfabeto)
-        if afnd.estado_inicial not in estados:
-            errores.append("INICIAL no pertenece al conjunto Q.")
-        if not finales.issubset(estados):
-            errores.append("FINALES contiene estados que no pertenecen a Q.")
+        # Mostramos los errores encontrados en los componentes
+        if errores:
+            print("\nErrores en los datos:")
+            for error in errores:
+                print("- " + error)
+            return None
 
-        for origen, simbolo, texto_destinos, numero_linea in transiciones:
-            destinos, error = CargadorAFND._convertir_destinos(texto_destinos)
-            if origen not in estados:
-                errores.append(
-                    "Línea " + str(numero_linea) + ": origen inexistente '" + origen + "'."   
-                )
-            elif ValidadorAFND.es_simbolo_epsilon(simbolo):
-                errores.append(
-                    "Línea "
-                    + str(numero_linea)
-                    + ": las transiciones epsilon no forman parte de esta fase."
-                )
-            elif simbolo not in alfabeto:
-                errores.append(
-                    "Línea " + str(numero_linea) + ": símbolo inexistente '" + simbolo + "'."
-                )
-            elif error is not None:
-                errores.append("Línea " + str(numero_linea) + ": " + error)
-            elif not destinos.issubset(estados):
-                inexistentes= destinos-estados
-                errores.append(
-                    "Línea "
-                    + str(numero_linea)
-                    + ": destinos inexistentes "
-                    + str(sorted(inexistentes))
-                    + "."
-                )
-            else:
-                afnd.agregar_transicion(origen,simbolo,destinos)
+        return afnd
 
-        return afnd, errores
+    @staticmethod
+    def construir_afnd(encabezados, transiciones):
+            #Convierte los textos validados en conjuntos y transiciones.#
+            errores = []
+            afnd = AFND(encabezados["NOMBRE"].strip())
+            estados, error = CargadorAFD.convertir_lista_archivo(
+                encabezados["ESTADOS"], "ESTADOS", False
+            )
+            if error:
+                errores.append(error)
+            alfabeto, error = CargadorAFD.convertir_lista_archivo(
+                encabezados["ALFABETO"], "ALFABETO", False
+            )
+            if error:
+                errores.append(error)
+            finales, error = CargadorAFD.convertir_lista_archivo(
+                encabezados["FINALES"], "FINALES", True
+            )
+            if error:
+                errores.append(error)
 
-@staticmethod
-def _convertir_destinos(texto):
-    #Convierte destino1|destino2 en un conjunto;  ∅ produce set().#
-    texto =texto.strip()
-    if texto in CargadorAFND._VACIO:
-        return set(), None
-    if texto == "":
-        return None, "El destino no puede quedar vacío; use ∅."
-    partes = [parte.strip() for parte in texto.split("|")]
-    if "" in partes:
-            return None, "Existen destinos vacíos entre separadores |."
-    if len(partes) != len(set(partes)):
-            return None, "Existen destinos duplicados."
-    if any(parte in CargadorAFND._VACIO for parte in partes):
-            return None, "∅ no puede combinarse con otros destinos."
-    return set(partes), None
+            if errores:
+                return None, errores
+
+            afnd.estados = estados
+            afnd.alfabeto = alfabeto
+            afnd.estado_inicial = encabezados["INICIAL"].strip()
+            afnd.estados_finales = finales
+
+            error_alfabeto=ValidadorAFND.validar_alfabeto(alfabeto)
+            if error_alfabeto:
+                errores.append(error_alfabeto)
+            if afnd.estado_inicial not in estados:
+                errores.append("INICIAL no pertenece al conjunto Q.")
+            if not finales.issubset(estados):
+                errores.append("FINALES contiene estados que no pertenecen a Q.")
+
+            for origen, simbolo, texto_destinos, numero_linea in transiciones:
+                destinos, error = CargadorAFND.convertir_destinos(texto_destinos)
+                if origen not in estados:
+                    errores.append(
+                        "Línea " + str(numero_linea) + ": origen inexistente '" + origen + "'."   
+                    )
+                elif ValidadorAFND.es_simbolo_epsilon(simbolo):
+                    errores.append(
+                        "Línea "
+                        + str(numero_linea)
+                        + ": las transiciones epsilon no forman parte de esta fase."
+                    )
+                elif simbolo not in alfabeto:
+                    errores.append(
+                        "Línea " + str(numero_linea) + ": símbolo inexistente '" + simbolo + "'."
+                    )
+                elif error is not None:
+                    errores.append("Línea " + str(numero_linea) + ": " + error)
+                elif not destinos.issubset(estados):
+                    inexistentes= destinos-estados
+                    errores.append(
+                        "Línea "
+                        + str(numero_linea)
+                        + ": destinos inexistentes "
+                        + str(sorted(inexistentes))
+                        + "."
+                    )
+                else:
+                    afnd.agregar_transicion(origen,simbolo,destinos)
+
+            return afnd, errores
+
+    @staticmethod
+    def convertir_destinos(texto):
+        #Convierte destino1|destino2 en un conjunto;  ∅ produce set().#
+        texto =texto.strip()
+        if texto in CargadorAFND._VACIO:
+            return set(), None
+        if texto == "":
+            return None, "El destino no puede quedar vacío; use ∅."
+        partes = [parte.strip() for parte in texto.split("|")]
+        if "" in partes:
+                return None, "Existen destinos vacíos entre separadores |."
+        if len(partes) != len(set(partes)):
+                return None, "Existen destinos duplicados."
+        if any(parte in CargadorAFND._VACIO for parte in partes):
+                return None, "∅ no puede combinarse con otros destinos."
+        return set(partes), None
