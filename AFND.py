@@ -64,6 +64,10 @@ class AFND:
         # Rechazamos otros tipos antes de modificar las transiciones.
         if not isinstance(estados_destino, set):
             raise TypeError("Los estados destino deben ser un conjunto.")
+        if not isinstance(estado_origen, str) or not isinstance(simbolo, str):
+            raise TypeError("El origen y el símbolo deben ser texto.")
+        if any(not isinstance(destino, str) for destino in estados_destino):
+            raise TypeError("Todos los estados destino deben ser texto.")
 
         # Creamos una tupla (estado, símbolo) como clave del diccionario
         clave = (estado_origen, simbolo)

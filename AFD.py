@@ -30,8 +30,8 @@ class AFD:
         # Esto es la función δ del AFD formal
         afd.transiciones = {}
         
-        # Lista para detectar no-determinismo: almacena transiciones duplicadas
-        # Si la misma pareja (estado, símbolo) aparece más de una vez, el AFD no es determinista
+        # Conservamos las repeticiones para distinguir errores de formato
+        # de destinos distintos, que sí introducen no determinismo.
         afd.transiciones_repetidas = []
         
         # Booleano que indica si el AFD ha pasado validación estructural
@@ -56,6 +56,10 @@ class AFD:
             True si la transición se agregó correctamente
             False si ya existía una transición para ese (estado, símbolo)
         """
+        # Comprobamos los tipos antes de usar la pareja como clave.
+        if any(not isinstance(valor, str) for valor in (estado_origen, simbolo, estado_destino)):
+            raise TypeError("El origen, símbolo y destino de un AFD deben ser texto.")
+
         # Creamos una tupla (estado, símbolo) como clave del diccionario
         clave = (estado_origen, simbolo)
 
@@ -64,7 +68,7 @@ class AFD:
         
         # Verificamos si ya existe una transición para esta pareja
         if clave in afd.transiciones:
-            # Esto viola el determinismo: registramos como transición repetida
+            # El validador compara destinos y revisa las referencias de la repetición.
             afd.transiciones_repetidas.append((estado_origen, simbolo, estado_destino))
             return False
         

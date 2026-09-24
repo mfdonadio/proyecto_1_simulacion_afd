@@ -2,6 +2,7 @@ import re
 from AFND import AFND
 from CargadorAFD import CargadorAFD
 from ValidadorAFND import ValidadorAFND
+from ValidadorAFD import ValidadorAFD
 
 class CargadorAFND:
     """
@@ -41,7 +42,7 @@ Formato de archivo esperado:
 
 
     @staticmethod
-    def pedir_conjunto_afnd(mensaje, permitir_vacio=False):
+    def pedir_conjunto_afnd(mensaje, permitir_vacio=False, nombres_estados=False):
         """
         Solicita al usuario un conjunto de elementos separados por comas.
         Valida que no haya elementos vacíos ni duplicados.
@@ -98,6 +99,15 @@ Formato de archivo esperado:
             if len(elementos) != len(set(elementos)):
                 print("No se permiten estados o símbolos duplicados.")
                 continue
+
+            # Compartimos la regla de nombres con la carga de archivos y el AFD.
+            if nombres_estados:
+                errores = [ValidadorAFD.validar_nombre_estado(elemento) for elemento in elementos]
+                if any(errores):
+                    for error in errores:
+                        if error:
+                            print(error)
+                    continue
             
             # Si pasó todas las validaciones, retornamos el set
             return set(elementos)
@@ -121,7 +131,7 @@ Formato de archivo esperado:
         # ========== PASO 2: CONJUNTO DE ESTADOS (Q) ==========
         # Ejemplo: q0,q1,q2
         afnd.estados = CargadorAFND.pedir_conjunto_afnd(
-            "Estados separados por coma (ej. q0,q1,q2): "
+            "Estados separados por coma (ej. q0,q1,q2): ", nombres_estados=True
         )
         
         # ========== PASO 3: ALFABETO (Σ) ==========
@@ -137,7 +147,7 @@ Formato de archivo esperado:
             for simbolo in alfabeto:
                 if ValidadorAFND.es_simbolo_epsilon(simbolo):
                     contiene_epsilon = True
-                elif len(simbolo) != 1:
+                elif len(simbolo) != 1 or simbolo.isspace() or not simbolo.isprintable():
                     simbolos_largos.append(simbolo)
 
             if contiene_epsilon:
@@ -174,6 +184,7 @@ Formato de archivo esperado:
             finales = CargadorAFND.pedir_conjunto_afnd(
                 "Estados finales separados por coma (Enter si no hay): ",
                 permitir_vacio=True,
+                nombres_estados=True,
             )
             
             # Verificar que todos los estados finales estén en Q
@@ -225,9 +236,9 @@ Formato de archivo esperado:
 
         # Leemos el archivo y quitamos espacios en los extremos
         try:
-            with open(ruta, "r", encoding="utf-8-sig") as archivo:
+            with open(CargadorAFD.normalizar_ruta(ruta), "r", encoding="utf-8-sig") as archivo:
                 lineas = [linea.strip() for linea in archivo]
-        except (OSError, UnicodeError) as error:
+        except (OSError, UnicodeError, ValueError) as error:
             print("No se pudo leer el archivo:", error)
             return None
 
@@ -354,6 +365,12 @@ Formato de archivo esperado:
                 print("- " + error)
             return None
 
+        # La carga solo termina si todos los componentes del AFND son válidos.
+        valido, errores = ValidadorAFND.validar(afnd)
+        if not valido:
+            for error in errores:
+                print("-", error)
+            return None
         return afnd
 
     @staticmethod
@@ -440,4 +457,8 @@ Formato de archivo esperado:
                 return None, "Existen destinos duplicados."
         if any(parte in CargadorAFND._VACIO for parte in partes):
                 return None, "∅ no puede combinarse con otros destinos."
+        for parte in partes:
+            error = ValidadorAFD.validar_nombre_estado(parte)
+            if error:
+                return None, error
         return set(partes), None

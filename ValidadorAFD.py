@@ -19,6 +19,19 @@ class ValidadorAFD:
         "eps",
         "lambda",
     }
+
+    @staticmethod
+    def validar_nombre_estado(estado):
+        """Comparte la regla de nombres entre ambos cargadores y validadores."""
+        if not isinstance(estado, str) or not estado:
+            return "El nombre de un estado debe ser texto no vacío."
+        # Estos textos ya tienen un significado en el formato de destinos.
+        if estado in ("∅", "{}") or any(caracter in ",|" for caracter in estado):
+            return "Nombre reservado: , y | separan elementos; ∅ y {} indican ausencia de destinos."
+        if any(caracter.isspace() or not caracter.isprintable() for caracter in estado):
+            return "El nombre de un estado no admite espacios ni caracteres de control en las transiciones."
+        return None
+
     @staticmethod
     def es_simbolo_epsilon(simbolo):
         """
@@ -88,8 +101,9 @@ class ValidadorAFD:
         if len(afd.estados) == 0:
             errores.append("El conjunto de estados Q no puede estar vacío.")
         for estado in afd.estados:
-            if not estado.strip():
-                errores.append("Los nombres de los estados no pueden estar vacíos.")
+            error = ValidadorAFD.validar_nombre_estado(estado)
+            if error:
+                errores.append(repr(estado) + ": " + error)
         
         # Σ (alfabeto) no puede estar vacío
         if len(afd.alfabeto) == 0:
@@ -102,7 +116,7 @@ class ValidadorAFD:
                     "El alfabeto de un AFD no puede contener ε, "
                     "porque representa la cadena vacía."
                 )
-            elif len(simbolo) != 1:
+            elif len(simbolo) != 1 or not simbolo.isprintable() or simbolo.isspace():
                 errores.append(
                     "El símbolo '"
                     + simbolo
@@ -178,15 +192,21 @@ class ValidadorAFD:
                 errores.append("Existe una transición repetida con formato inválido.")
                 continue
             estado_origen, simbolo, estado_destino = repetida
-            errores.append(
-                "No es determinista: existen múltiples transiciones para ("
-                + estado_origen
-                + ", "
-                + simbolo
-                + "). Una va a: '"
-                + estado_destino
-                + "'."
-            )
+            clave = (estado_origen, simbolo)
+            # Revisamos también las referencias de las líneas que no entraron en δ.
+            if estado_origen not in afd.estados:
+                errores.append("Transición repetida con origen inexistente: " + estado_origen)
+            if simbolo not in afd.alfabeto:
+                errores.append("Transición repetida con símbolo inexistente: " + simbolo)
+            if estado_destino not in afd.estados:
+                errores.append("Transición repetida con destino inexistente: " + estado_destino)
+            if clave not in afd.transiciones:
+                errores.append("Transición repetida sin una transición original.")
+            elif afd.transiciones[clave] == estado_destino:
+                errores.append("Transición duplicada idéntica: " + repr(repetida)
+                               + ". Error de formato; no introduce no determinismo.")
+            else:
+                errores.append("No es determinista: destinos distintos para " + repr(clave) + ".")
         
         # ========== VALIDAR COMPLETITUD ==========
         faltantes = ValidadorAFD.obtener_transiciones_faltantes(afd)
@@ -278,6 +298,12 @@ class ValidadorAFD:
         Retorna:
             Tupla (nombre_estado_trampa, cantidad_transiciones_completadas)
         """
+        # No completamos una definición con otros errores ni creamos nombres inválidos.
+        if ValidadorAFD.clasificar(afd) != "AFD INCOMPLETO":
+            return None, 0
+        error = ValidadorAFD.validar_nombre_estado(nombre_base)
+        if error:
+            raise ValueError(error)
         faltantes = ValidadorAFD.obtener_transiciones_faltantes(afd)
 
         if len(faltantes) == 0:
@@ -316,54 +342,18 @@ class ValidadorAFD:
 
     @staticmethod
     def clasificar(afd):
-        """Distingue un AFD válido, incompleto o inválido."""
+        """Prioriza datos inválidos, no determinismo y después incompletitud."""
 
         valido, errores = ValidadorAFD.validar(afd)
 
         if valido:
             return "AFD VÁLIDO"
 
-        # Los errores de tipos o estructura impiden completar el autómata.
-        if any(not error.startswith("Falta la transición δ(") for error in errores):
+        # Una referencia inválida tiene prioridad aunque también falten transiciones
+        # o existan destinos distintos. Una duplicación idéntica es error de formato.
+        if any(not error.startswith(("Falta la transición δ(", "No es determinista:"))
+               for error in errores):
             return "AFD INVÁLIDO"
-
-        # Las transiciones repetidas impiden tratarlo como un AFD válido
-        if afd.transiciones_repetidas:
-            return "AFD INVÁLIDO"
-
-        # Revisamos los componentes antes de atribuir el fallo
-        # únicamente a transiciones faltantes
-        if not afd.nombre.strip() or not afd.estados or not afd.alfabeto:
-            return "AFD INVÁLIDO"
-
-        if afd.estado_inicial not in afd.estados:
-            return "AFD INVÁLIDO"
-
-        if not afd.estados_finales.issubset(afd.estados):
-            return "AFD INVÁLIDO"
-
-        for simbolo in afd.alfabeto:
-            if (
-                ValidadorAFD.es_simbolo_epsilon(simbolo)
-                or len(simbolo) != 1
-                or simbolo.isspace()
-            ):
-                return "AFD INVÁLIDO"
-
-        for clave, destino in afd.transiciones.items():
-            if not isinstance(clave, tuple) or len(clave) != 2:
-                return "AFD INVÁLIDO"
-
-            origen, simbolo = clave
-
-            if (
-                origen not in afd.estados
-                or simbolo not in afd.alfabeto
-                or destino not in afd.estados
-            ):
-                return "AFD INVÁLIDO"
-
-        if ValidadorAFD.obtener_transiciones_faltantes(afd):
-            return "AFD INCOMPLETO"
-
-        return "AFD INVÁLIDO"
+        if any(error.startswith("No es determinista:") for error in errores):
+            return "DEFINICIÓN NO DETERMINISTA"
+        return "AFD INCOMPLETO"

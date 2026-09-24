@@ -1,4 +1,5 @@
 import re
+import os
 from ValidadorAFD import ValidadorAFD
 from AFD import AFD
 
@@ -22,7 +23,7 @@ class CargadorAFD:
     """
 
     @staticmethod
-    def pedir_conjunto(mensaje, permitir_vacio=False):
+    def pedir_conjunto(mensaje, permitir_vacio=False, nombres_estados=False):
         """
         Solicita al usuario un conjunto de elementos separados por comas.
         Valida que no haya elementos vacíos ni duplicados.
@@ -79,6 +80,15 @@ class CargadorAFD:
             if len(elementos) != len(set(elementos)):
                 print("No se permiten estados o símbolos duplicados.")
                 continue
+
+            # Usamos la misma regla en consola, archivos y validación estructural.
+            if nombres_estados:
+                errores = [ValidadorAFD.validar_nombre_estado(elemento) for elemento in elementos]
+                if any(errores):
+                    for error in errores:
+                        if error:
+                            print(error)
+                    continue
             
             # Si pasó todas las validaciones, retornamos el set
             return set(elementos)
@@ -102,7 +112,7 @@ class CargadorAFD:
         # ========== PASO 2: CONJUNTO DE ESTADOS (Q) ==========
         # Ejemplo: q0,q1,q2
         afd.estados = CargadorAFD.pedir_conjunto(
-            "Estados separados por coma (ej. q0,q1,q2): "
+            "Estados separados por coma (ej. q0,q1,q2): ", nombres_estados=True
         )
         
         # ========== PASO 3: ALFABETO (Σ) ==========
@@ -118,7 +128,7 @@ class CargadorAFD:
             for simbolo in alfabeto:
                 if ValidadorAFD.es_simbolo_epsilon(simbolo):
                     contiene_epsilon = True
-                elif len(simbolo) != 1:
+                elif len(simbolo) != 1 or simbolo.isspace() or not simbolo.isprintable():
                     simbolos_largos.append(simbolo)
 
             if contiene_epsilon:
@@ -155,6 +165,7 @@ class CargadorAFD:
             finales = CargadorAFD.pedir_conjunto(
                 "Estados finales separados por coma (Enter si no hay): ",
                 permitir_vacio=True,
+                nombres_estados=True,
             )
             
             # Verificar que todos los estados finales estén en Q
@@ -203,6 +214,19 @@ class CargadorAFD:
     )
 
     @staticmethod
+    def normalizar_ruta(ruta):
+        """Las rutas relativas parten de la carpeta desde donde se ejecutó Python."""
+        ruta = os.fspath(ruta)
+        if isinstance(ruta, str):
+            ruta = ruta.strip()
+            # Solo quitamos un par de comillas exteriores coincidentes.
+            if len(ruta) >= 2 and ruta[0] == ruta[-1] and ruta[0] in ("'", '"'):
+                ruta = ruta[1:-1]
+            if "\x00" in ruta:
+                raise ValueError("La ruta no puede contener un carácter nulo.")
+        return ruta
+
+    @staticmethod
     def cargar_archivo(ruta):
         """
         Carga un AFD desde un archivo .txt con formato específico.
@@ -225,9 +249,9 @@ class CargadorAFD:
         
         # ========== PASO 1: LEER EL ARCHIVO ==========
         try:
-            with open(ruta, "r", encoding="utf-8-sig") as archivo:
+            with open(CargadorAFD.normalizar_ruta(ruta), "r", encoding="utf-8-sig") as archivo:
                 lineas = archivo.readlines()
-        except (OSError, UnicodeError) as error:
+        except (OSError, UnicodeError, ValueError) as error:
             print("Error: No fue posible abrir el archivo:", error)
             return None
         
@@ -439,25 +463,20 @@ class CargadorAFD:
             if not linea_valida:
                 continue
 
-            # Detectar múltiples transiciones para la misma pareja
-            if not afd.agregar_transicion(origen, simbolo, destino):
-                errores.append(
-                    "Línea "
-                    + str(numero_linea)
-                    + ": existen múltiples transiciones para ("
-                    + origen
-                    + ", "
-                    + simbolo
-                    + ")."
-                )
-        
-        # Si hay errores, reportar y salir
-        if len(errores) > 0:
-            print("\nError: Se encontraron errores de sintaxis:")
-            for error in errores:
+            # Conservamos las repeticiones para que el validador compare sus destinos.
+            afd.agregar_transicion(origen, simbolo, destino)
+
+        # Si hay errores de sintaxis o referencias, la definición es inválida.
+        # En otro caso distinguimos duplicaciones idénticas y no determinismo.
+        clasificacion = ValidadorAFD.clasificar(afd)
+        _, errores_estructura = ValidadorAFD.validar(afd)
+        if errores or clasificacion in ("AFD INVÁLIDO", "DEFINICIÓN NO DETERMINISTA"):
+            print("\nClasificación:", "AFD INVÁLIDO" if errores else clasificacion)
+            for error in errores + errores_estructura:
                 print("-", error)
             return None
         
+        print("Clasificación:", clasificacion)
         return afd
 
     @staticmethod
@@ -497,6 +516,13 @@ class CargadorAFD:
                 )
             
             elementos.append(elemento)
+
+        # Los estados deben poder escribirse sin ambigüedad en las transiciones.
+        if nombre_campo in ("ESTADOS", "FINALES"):
+            for elemento in elementos:
+                error = ValidadorAFD.validar_nombre_estado(elemento)
+                if error:
+                    return None, nombre_campo + ": " + repr(elemento) + ": " + error
         
         # ========== VALIDAR DUPLICADOS ==========
         if len(elementos) != len(set(elementos)):

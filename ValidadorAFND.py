@@ -1,5 +1,7 @@
 """Validacion estructural de AFND"""
 
+from ValidadorAFD import ValidadorAFD
+
 class ValidadorAFND:
     """Comprueba la quintupla de un AFND. No exige completitud segun los lineamientos del proyecto."""
 
@@ -43,8 +45,9 @@ class ValidadorAFND:
         if not afnd.estados:
             errores.append("El conjunto de estados Q no puede estar vacio.")
         for estado in afnd.estados:
-            if not estado.strip():
-                errores.append("Los nombres de los estados no pueden estar vacíos.")
+            error = ValidadorAFD.validar_nombre_estado(estado)
+            if error:
+                errores.append(repr(estado) + ": " + error)
 
         #Validamos el alfabeto del AFND
         if not afnd.alfabeto:
@@ -56,7 +59,7 @@ class ValidadorAFND:
                 errores.append("Las transiciones epsilon no estan permitidas en la fase 2.")
             elif len(simbolo) != 1:
                 errores.append("El simbolo " + simbolo + " debe tener exactamente un caracter.")
-            elif simbolo.isspace():
+            elif simbolo.isspace() or not simbolo.isprintable():
                 errores.append("No pueden existir espacios en los simbolos.")
 
         #Validamos el estado inicial del AFND
@@ -129,7 +132,7 @@ class ValidadorAFND:
                 return "La longitud de los simbolos debe ser de exactamente 1."
 
             #Por ultimo, vemos que no hayan espacios en los simbolos
-            if simbolo.isspace():
+            if simbolo.isspace() or not simbolo.isprintable():
                 return "No pueden existir espacios en los simbolos"
 
         #Si cumple todas las condiciones

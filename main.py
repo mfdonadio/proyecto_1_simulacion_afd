@@ -1,5 +1,8 @@
 """Menú principal del motor de validación y conversión de AFD y AFND."""
 
+import os
+from copy import deepcopy
+
 # Importamos las clases que representan los dos tipos de autómatas
 from AFD import AFD
 from AFND import AFND
@@ -18,7 +21,7 @@ from ValidadorAFND import ValidadorAFND
 
 
 def mostrar_menu():
-    """Muestra las quince opciones solicitadas en el enunciado."""
+    """Muestra las quince opciones de ambas fases del proyecto."""
 
     # Creamos el encabezado principal del programa
     print("\n" + "=" * 68)
@@ -32,10 +35,10 @@ def mostrar_menu():
     print(" 3. Crear un AFND manualmente")
     print(" 4. Cargar un AFND desde un archivo .txt")
     print(" 5. Mostrar la definición formal y la tabla del autómata cargado")
-    print(" 6. Validar la estructura del autómata")
+    print(" 6. Validar el autómata original y el AFD generado, si existe")
     print(" 7. Convertir el AFND cargado en un AFD equivalente")
     print(" 8. Mostrar la tabla de equivalencias de macroestados")
-    print(" 9. Mostrar la tabla de transición del AFD generado")
+    print(" 9. Mostrar la definición formal y la tabla del AFD generado")
     print("10. Evaluar una cadena")
     print("11. Evaluar un archivo de cadenas")
     print("12. Consultar el historial de evaluaciones")
@@ -103,6 +106,7 @@ def obtener_afd_operativo(automata, afd_generado):
         if afd_generado is None:
             print("\nError: convierta el AFND antes de usar esta función.")
             return None
+        print("Se utiliza el AFD equivalente generado:", afd_generado.nombre)
         return afd_generado
 
     print("\nError: primero debe crear o cargar un autómata.")
@@ -140,28 +144,20 @@ def evaluar_archivo_cadenas(afd):
     # Solicitamos la ubicación del archivo que contiene las cadenas
     ruta = input("Ruta del archivo de cadenas: ").strip()
 
-    # Intentamos abrir y leer todas las líneas del archivo
+    # Procesamos línea por línea para no almacenar todo el archivo en memoria.
     try:
-        with open(ruta, "r", encoding="utf-8-sig") as archivo:
-            lineas = archivo.readlines()
-    except (OSError, UnicodeError) as error:
-        print("Error: no fue posible abrir el archivo:", error)
-        return
-
-    print("\n--- EVALUACIÓN POR LOTES ---")
-
-    # Cada línea del archivo representa una cadena independiente
-    for numero, linea in enumerate(lineas, start=1):
-
-        # Quitamos únicamente el salto de línea para conservar la cadena original
-        cadena = linea.rstrip("\r\n")
-        print("\nCadena", str(numero) + ":", repr(cadena))
-        # Enviamos la cadena al simulador y solicitamos su traza completa
-        aceptada, resultado = SimuladorAFD.evaluar(afd, cadena, True)
-
-        # Si el simulador devuelve un mensaje diferente, ocurrió un error
-        if resultado not in ("Aceptada", "Rechazada"):
-            print("Error:", resultado)
+        with open(CargadorAFD.normalizar_ruta(ruta), "r", encoding="utf-8-sig") as archivo:
+            print("\n--- EVALUACIÓN POR LOTES ---")
+            for numero, linea in enumerate(archivo, start=1):
+                # Una línea vacía es epsilon; los espacios sí pertenecen a la cadena.
+                cadena = linea.rstrip("\r\n")
+                print("\nCadena", str(numero) + ":", repr(cadena))
+                aceptada, resultado = SimuladorAFD.evaluar(afd, cadena, True)
+                if resultado not in ("Aceptada", "Rechazada"):
+                    print("Error:", resultado)
+    except (OSError, UnicodeError, ValueError) as error:
+        print("Error: no fue posible leer el archivo:", error)
+        print("Las evaluaciones ya terminadas permanecen en el historial.")
 
 
 def mostrar_historial(afd):
@@ -297,6 +293,12 @@ def _formatear_conjunto(elementos):
     return "{" + ", ".join(sorted(elementos)) + "}"
 
 
+def _copiar_definicion(automata):
+    """Guarda los componentes para detectar cambios sin incluir historial ni validación."""
+    return deepcopy((automata.nombre, automata.estados, automata.alfabeto,
+                     automata.estado_inicial, automata.estados_finales, automata.transiciones))
+
+
 def main():
     """Mantiene el autómata original y, cuando aplica, su AFD equivalente."""
 
@@ -308,105 +310,141 @@ def main():
 
     # Relaciona cada macroestado del AFD con un subconjunto del AFND
     equivalencias = {}
+    definicion_convertida = None
 
     print("\nBienvenido al motor de AFD y AFND - Proyecto 2")
+    print("Las rutas relativas parten de:", os.getcwd())
+    print("Puede pegar rutas absolutas o relativas entre comillas coincidentes.")
 
     # El menú se repite hasta que el usuario seleccione la opción de salir
     while True:
-        mostrar_menu()
-        opcion = input("Seleccione una opción (1-15): ").strip()
+        try:
+            mostrar_menu()
+            opcion = input("Seleccione una opción (1-15): ").strip()
 
-        # Opciones 1 a 4: crear o cargar un nuevo autómata
-        if opcion in ("1", "2", "3", "4"):
-            nuevo = crear_o_cargar(opcion)
+            # El menú no edita el AFND. Esta comprobación también protege frente
+            # a cambios directos en sus componentes durante una sesión integrada.
+            if afd_generado is not None and _copiar_definicion(automata_actual) != definicion_convertida:
+                afd_generado, equivalencias = None, {}
+                definicion_convertida = None
+                print("El AFND cambió; vuelva a convertirlo antes de usar su equivalente.")
 
-            # Solo reemplazamos los datos actuales si la carga fue correcta
-            if nuevo is not None:
-                automata_actual = nuevo
-                afd_generado, equivalencias = preparar_nuevo_automata(nuevo)
-                print("\nAutómata cargado. Los datos anteriores fueron limpiados.")
+            # Opciones 1 a 4: crear o cargar un nuevo autómata
+            if opcion in ("1", "2", "3", "4"):
+                nuevo = crear_o_cargar(opcion)
 
-        # Opción 5: mostrar el autómata cargado originalmente
-        elif opcion == "5":
-            if automata_actual is None:
-                print("\nError: primero debe crear o cargar un autómata.")
-            else:
-                automata_actual.mostrar_definicion_formal()
-                automata_actual.mostrar_tabla_transicion()
+                # Solo reemplazamos los datos actuales si la carga fue correcta
+                if nuevo is not None:
+                    afd_nuevo, nuevas_equivalencias = preparar_nuevo_automata(nuevo)
+                    if isinstance(nuevo, AFND) and afd_nuevo is None:
+                        continue
+                    # Confirmamos la nueva sesión solo después de preparar todos sus datos.
+                    automata_actual = nuevo
+                    afd_generado, equivalencias = afd_nuevo, nuevas_equivalencias
+                    definicion_convertida = _copiar_definicion(nuevo) if afd_generado is not None else None
+                    print("\nAutómata cargado. Los datos anteriores fueron limpiados.")
 
-        # Opción 6: validar según sea AFD o AFND
-        elif opcion == "6":
-            mostrar_validacion(automata_actual)
-
-        # Opción 7: volver a convertir el AFND cargado
-        elif opcion == "7":
-            if not isinstance(automata_actual, AFND):
-                print("\nError: debe existir un AFND cargado para convertirlo.")
-            else:
-                # Ejecutamos la conversión sin perder el AFND original
-                afd_nuevo, nuevas_equivalencias, errores = ConvertidorAFND.convertir(
-                    automata_actual
-                )
-                if errores:
-                    print("\nNo fue posible convertir el AFND:")
-                    _mostrar_lista_errores(errores)
+            # Opción 5: mostrar el autómata cargado originalmente
+            elif opcion == "5":
+                if automata_actual is None:
+                    print("\nError: primero debe crear o cargar un autómata.")
                 else:
-                    afd_generado = afd_nuevo
-                    equivalencias = nuevas_equivalencias
-                    print("\nAFND convertido correctamente en un AFD equivalente.")
-                    print("Macroestados generados:", len(equivalencias))
+                    automata_actual.mostrar_definicion_formal()
+                    automata_actual.mostrar_tabla_transicion()
 
-        # Opción 8: mostrar qué subconjunto representa cada macroestado
-        elif opcion == "8":
-            ConvertidorAFND.mostrar_equivalencias(equivalencias)
+            # Opción 6: validar según sea AFD o AFND
+            elif opcion == "6":
+                print("\n--- AUTÓMATA ORIGINAL ---")
+                mostrar_validacion(automata_actual)
+                if afd_generado is not None:
+                    print("\n--- AFD EQUIVALENTE GENERADO ---")
+                    mostrar_validacion(afd_generado)
 
-        # Opción 9: mostrar únicamente la tabla del AFD equivalente
-        elif opcion == "9":
-            if afd_generado is None:
-                print("\nError: todavía no existe un AFD generado; convierta un AFND primero.")
-                continue
-            print("\n--- TABLA DE TRANSICIONES DEL AFD GENERADO ---")
-            afd_generado.mostrar_tabla_transicion()
+            # Opción 7: volver a convertir el AFND cargado
+            elif opcion == "7":
+                if not isinstance(automata_actual, AFND):
+                    print("\nError: debe existir un AFND cargado para convertirlo.")
+                elif afd_generado is not None and ValidadorAFD.validar(afd_generado)[0]:
+                    # Reutilizamos el AFD generado para no perder su historial ni equivalencias.
+                    print("La conversión ya está disponible; se conserva el historial.")
+                else:
+                    # Ejecutamos la conversión sin perder el AFND original
+                    afd_nuevo, nuevas_equivalencias, errores = ConvertidorAFND.convertir(
+                        automata_actual
+                    )
+                    if errores:
+                        print("\nNo fue posible convertir el AFND:")
+                        _mostrar_lista_errores(errores)
+                    else:
+                        afd_generado = afd_nuevo
+                        equivalencias = nuevas_equivalencias
+                        definicion_convertida = _copiar_definicion(automata_actual)
+                        print("\nAFND convertido correctamente en un AFD equivalente.")
+                        print("Macroestados generados:", len(equivalencias))
 
-        # Opción 10: evaluar una cadena individual y mostrar su traza
-        elif opcion == "10":
-            afd = obtener_afd_operativo(automata_actual, afd_generado)
-            if asegurar_afd_valido(afd):
-                cadena = input("Ingrese la cadena (Enter representa ε): ")
-                aceptada, resultado = SimuladorAFD.evaluar(afd, cadena, True)
-                if resultado not in ("Aceptada", "Rechazada"):
-                    print("Error:", resultado)
+            # Opción 8: mostrar qué subconjunto representa cada macroestado
+            elif opcion == "8":
+                ConvertidorAFND.mostrar_equivalencias(equivalencias)
 
-        # Opción 11: evaluar todas las cadenas contenidas en un archivo
-        elif opcion == "11":
-            afd = obtener_afd_operativo(automata_actual, afd_generado)
-            evaluar_archivo_cadenas(afd)
+            # Opción 9: consultar la definición completa del AFD equivalente
+            elif opcion == "9":
+                if afd_generado is None:
+                    print("\nError: todavía no existe un AFD generado; convierta un AFND primero.")
+                    continue
+                afd_generado.mostrar_definicion_formal()
+                print("\n--- TABLA DE TRANSICIONES DEL AFD GENERADO ---")
+                afd_generado.mostrar_tabla_transicion()
 
-        # Opción 12: consultar los resultados acumulados durante la sesión
-        elif opcion == "12":
-            afd = obtener_afd_operativo(automata_actual, afd_generado)
-            mostrar_historial(afd)
+            # Opción 10: evaluar una cadena individual y mostrar su traza
+            elif opcion == "10":
+                afd = obtener_afd_operativo(automata_actual, afd_generado)
+                if asegurar_afd_valido(afd):
+                    cadena = input("Ingrese la cadena (Enter representa ε): ")
+                    aceptada, resultado = SimuladorAFD.evaluar(afd, cadena, True)
+                    if resultado not in ("Aceptada", "Rechazada"):
+                        print("Error:", resultado)
 
-        # Opción 13: calcular estados alcanzables, inaccesibles y finales útiles
-        elif opcion == "13":
-            afd = obtener_afd_operativo(automata_actual, afd_generado)
-            mostrar_analisis(afd)
+            # Opción 11: evaluar todas las cadenas contenidas en un archivo
+            elif opcion == "11":
+                afd = obtener_afd_operativo(automata_actual, afd_generado)
+                evaluar_archivo_cadenas(afd)
 
-        # Opción 14: reemplazar el autómata y limpiar los datos anteriores
-        elif opcion == "14":
-            nuevo = crear_o_cargar()
-            if nuevo is not None:
-                automata_actual = nuevo
-                afd_generado, equivalencias = preparar_nuevo_automata(nuevo)
-                print("\nNuevo autómata cargado; sesión anterior limpiada.")
+            # Opción 12: consultar los resultados acumulados durante la sesión
+            elif opcion == "12":
+                afd = obtener_afd_operativo(automata_actual, afd_generado)
+                mostrar_historial(afd)
 
-        # Opción 15: finalizar el ciclo principal del programa
-        elif opcion == "15":
-            print("\nPrograma finalizado.")
+            # Opción 13: calcular estados alcanzables, inaccesibles y finales útiles
+            elif opcion == "13":
+                afd = obtener_afd_operativo(automata_actual, afd_generado)
+                mostrar_analisis(afd)
+
+            # Opción 14: reemplazar el autómata y limpiar los datos anteriores
+            elif opcion == "14":
+                nuevo = crear_o_cargar()
+                if nuevo is not None:
+                    afd_nuevo, nuevas_equivalencias = preparar_nuevo_automata(nuevo)
+                    if isinstance(nuevo, AFND) and afd_nuevo is None:
+                        continue
+                    automata_actual = nuevo
+                    afd_generado, equivalencias = afd_nuevo, nuevas_equivalencias
+                    definicion_convertida = _copiar_definicion(nuevo) if afd_generado is not None else None
+                    print("\nNuevo autómata cargado; sesión anterior limpiada.")
+
+            # Opción 15: finalizar el ciclo principal del programa
+            elif opcion == "15":
+                print("\nPrograma finalizado.")
+                break
+
+            else:
+                print("\nError: ingrese un número del 1 al 15.")
+        except EOFError:
+            # Sin entrada disponible no repetimos el menú indefinidamente.
+            print("\nFin de entrada. Programa finalizado.")
             break
+        except KeyboardInterrupt:
+            # Cancelar una operación conserva la sesión ya cargada.
+            print("\nOperación cancelada. Regresamos al menú.")
 
-        else:
-            print("\nError: ingrese un número del 1 al 15.")
-            
 if __name__ == "__main__":
     main()
