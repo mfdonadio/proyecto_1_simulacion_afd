@@ -248,8 +248,15 @@ class CargadorAFD:
         """
         
         # ========== PASO 1: LEER EL ARCHIVO ==========
+        # Validar extensión antes de intentar abrir el archivo.
+        # Se acepta .txt en cualquier combinación de mayúsculas/minúsculas.
+        ruta_normalizada = CargadorAFD.normalizar_ruta(ruta)
+        _, extension = os.path.splitext(ruta_normalizada)
+        if extension.lower() != ".txt":
+            print("Error: el archivo debe tener extensión .txt")
+            return None
         try:
-            with open(CargadorAFD.normalizar_ruta(ruta), "r", encoding="utf-8-sig") as archivo:
+            with open(ruta_normalizada, "r", encoding="utf-8-sig") as archivo:
                 lineas = archivo.readlines()
         except (OSError, UnicodeError, ValueError) as error:
             print("Error: No fue posible abrir el archivo:", error)

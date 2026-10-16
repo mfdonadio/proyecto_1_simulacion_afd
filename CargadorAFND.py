@@ -1,4 +1,5 @@
 import re
+import os
 from AFND import AFND
 from CargadorAFD import CargadorAFD
 from ValidadorAFND import ValidadorAFND
@@ -234,9 +235,17 @@ Formato de archivo esperado:
     def cargar_archivo(ruta):
         """Carga un AFND y muestra los errores encontrados."""
 
+        # Validar extensión antes de intentar abrir el archivo.
+        # Se acepta .txt en cualquier combinación de mayúsculas/minúsculas.
+        ruta_normalizada = CargadorAFD.normalizar_ruta(ruta)
+        _, extension = os.path.splitext(ruta_normalizada)
+        if extension.lower() != ".txt":
+            print("Error: el archivo debe tener extensión .txt")
+            return None
+
         # Leemos el archivo y quitamos espacios en los extremos
         try:
-            with open(CargadorAFD.normalizar_ruta(ruta), "r", encoding="utf-8-sig") as archivo:
+            with open(ruta_normalizada, "r", encoding="utf-8-sig") as archivo:
                 lineas = [linea.strip() for linea in archivo]
         except (OSError, UnicodeError, ValueError) as error:
             print("No se pudo leer el archivo:", error)

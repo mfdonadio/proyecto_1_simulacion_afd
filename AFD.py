@@ -26,7 +26,7 @@ class AFD:
         # la cadena es aceptada; si no, es rechazada
         afd.estados_finales = set()
         
-        # Diccionario de transiciones: clave = (estado, símbolo), valor = estado_destino
+        # Diccionario de transiciones: clave = (estado, símbolo), valor = estado_   destino
         # Esto es la función δ del AFD formal
         afd.transiciones = {}
         
@@ -116,8 +116,20 @@ class AFD:
         estados_ordenados = sorted(afd.estados)
         alfabeto_ordenado = sorted(afd.alfabeto)
         
-        # Parámetro de formato: ancho de cada columna en caracteres
-        ancho = 15
+        # Calculamos el ancho de cada columna a partir del dato más largo,
+        # para que estados o símbolos de cualquier longitud queden bien alineados.
+        # Se comparan: encabezado "Estado", todos los nombres de estado,
+        # todos los símbolos del alfabeto y todos los valores de celda (destino o "---").
+        ancho_estados = max(len("Estado"), max(len(e) for e in estados_ordenados))
+        ancho_simbolos = max(len(s) for s in alfabeto_ordenado)
+        ancho_celdas = max(
+            len(afd.transiciones.get((e, s), "---"))
+            for e in estados_ordenados
+            for s in alfabeto_ordenado
+        )
+        # Tomamos el mayor de todos los componentes y añadimos un margen mínimo.
+        MARGEN = 2
+        ancho = max(ancho_estados, ancho_simbolos, ancho_celdas) + MARGEN
         
         # Creamos el encabezado de la tabla: primera columna es "Estado"
         encabezado = "Estado".ljust(ancho)
