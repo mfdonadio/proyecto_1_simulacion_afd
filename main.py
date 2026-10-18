@@ -29,6 +29,7 @@ def mostrar_menu():
     print("MOTOR DE VALIDACIÓN Y CONVERSIÓN DE AUTÓMATAS".center(68))
     print("elaborado por: Gerber Perez y Marco Donadio".center(68))
     print("=" * 68)
+    print("FASES 1 Y 2: Creación de AFD y Conversión de AFND a AFD")
     print(" 1. Crear un AFD manualmente")
     print(" 2. Cargar un AFD desde un archivo .txt")
     print(" 3. Crear un AFND manualmente")
@@ -43,12 +44,13 @@ def mostrar_menu():
     print("12. Consultar el historial de evaluaciones")
     print("13. Realizar el análisis estructural")
     print("14. Cargar o crear otro autómata (AFD/AFND)")
-    print("15. Salir")
-    print("--- Fase 3: Autómatas de Pila ---")
-    print("16. Crear un APD o APND manualmente")
-    print("17. Cargar un APD o APND desde un archivo .txt")
-    print("18. Ajustar el límite de exploración para AP")
-
+    print("=" * 68)
+    print("FASE 3: CREACION DE APD Y APND")
+    print("15. Crear un APD o APND manualmente")
+    print("16. Cargar un APD o APND desde un archivo .txt")
+    print("17. Ajustar el límite de exploración para AP")
+    print("=" * 68)
+    print("18. Salir")
 
 # Validamos el autómata activo con las reglas que corresponden a su tipo.
 def mostrar_validacion(automata):
@@ -537,14 +539,8 @@ def main():
                     # Limpiar AP activo: sesión AFD/AFND toma el control
                     ap_actual = None
                     print("\nNuevo autómata AFD/AFND cargado; sesión anterior limpiada.")
-
-            # La opción 15 termina el ciclo principal.
+            # La opción 15 crea un AP desde la terminal y lo deja activo si es válido.
             elif opcion == "15":
-                print("\nPrograma finalizado.")
-                break
-
-            # La opción 16 crea un AP desde la terminal y lo deja activo si es válido.
-            elif opcion == "16":
                 nuevo_ap = CargadorAP.crear_manual()
                 if nuevo_ap is not None:
                     ap_actual = nuevo_ap
@@ -555,8 +551,8 @@ def main():
                     definicion_convertida = None
                     print("\nAP ({}) cargado como autómata activo de pila.".format(ap_actual.tipo))
 
-            # La opción 17 carga un AP desde un archivo y conserva la sesión si falla.
-            elif opcion == "17":
+            # La opción 16 carga un AP desde un archivo y conserva la sesión si falla.
+            elif opcion == "16":
                 ruta = input("Ruta del archivo AP (.txt): ").strip()
                 nuevo_ap = CargadorAP.cargar_archivo(ruta)
                 if nuevo_ap is not None:
@@ -568,10 +564,14 @@ def main():
                     definicion_convertida = None
                     print("\nAP ({}) cargado como autómata activo de pila.".format(ap_actual.tipo))
 
-            # La opción 18 cambia el presupuesto que recibirá cada evaluación de AP.
-            elif opcion == "18":
+            # La opción 17 cambia el presupuesto que recibirá cada evaluación de AP.
+            elif opcion == "17":
                 limite_ap = ajustar_limite_ap(limite_ap)
 
+            # La opción 18 termina el ciclo principal.
+            elif opcion == "18":
+                print("\nPrograma finalizado.")
+                break
             else:
                 print("\nError: ingrese un número del 1 al 18.")
 
