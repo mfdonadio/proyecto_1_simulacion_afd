@@ -1,41 +1,8 @@
-"""
-CargadorAP.py — Carga y construcción manual de Autómatas de Pila (APD/APND).
-
-Dos puntos de entrada públicos:
-  cargar_archivo(ruta)  -> AutomataPila | None
-  crear_manual()        -> AutomataPila | None
-
-Ambos devuelven None y muestran mensajes de error si la definición es inválida,
-sin modificar el autómata activo de la sesión (la atomicidad es responsabilidad
-de quien llama, típicamente main.py).
-
-Formato de archivo soportado (idéntico a ejemplos/fase3/):
---------------------------------------------------------------
-NOMBRE=APD_ANBN
-TIPO=APD
-ESTADOS=q0,q1,q2
-ALFABETO=a,b
-ALFABETO_PILA=Z0,A
-INICIAL=q0
-INICIAL_PILA=Z0
-FINALES=q2
-TRANSICIONES:
-q0,a,Z0,q0,A;Z0
-q0,b,A,q1,EPS
-q0,a,Z0,qm,Z0|qf,Z0   <- alternativas APND con '|'
-
-Convenciones clave
-------------------
-- Reemplazo 'EPS' → tupla vacía () (desapilar sin insertar).
-- Reemplazo 'A;Z0' → ('A', 'Z0') (tokens separados por ';').
-- Nunca mezclar EPS con tokens: 'A;EPS' y 'EPS;Z0' son errores.
-- El tope nunca puede ser EPS.
-- Alternativas APND: primer tramo con 5 campos, tramos adicionales con 2.
-  No repetir origen/entrada/tope después de '|'.
-- Líneas vacías dentro de la sección TRANSICIONES: son error de formato.
-- Un duplicado exacto de transición → diagnóstico, no se añade.
-- Una clave APND con alternativas distintas en varias líneas → se unen.
-"""
+# Este módulo permite cargar un APD o APND desde un archivo y crearlo a mano.
+# Si la definición tiene errores, las funciones públicas muestran el diagnóstico
+# y devuelven None para que el programa conserve el autómata activo anterior.
+# EPS representa un desapilado, mientras que ";" separa los símbolos que se
+# insertan en la pila. Las alternativas de un APND se separan con "|".
 
 import re
 import os
@@ -44,10 +11,6 @@ from AutomataPila import AutomataPila, EPS
 import ValidadorAP
 # Reutilizamos normalizar_ruta de CargadorAFD para manejar comillas y espacios.
 from CargadorAFD import CargadorAFD
-
-# ---------------------------------------------------------------------------
-# Constantes
-# ---------------------------------------------------------------------------
 
 # Encabezados reconocidos en el formato AP, en el orden oficial de escritura.
 _ENCABEZADOS_AP = (
@@ -72,40 +35,19 @@ _RE_TRANSICIONES = re.compile(r"^TRANSICIONES:$")
 _RE_TOKEN = re.compile(r"^[^\s,;|]+$")
 
 
-# ---------------------------------------------------------------------------
-# Helpers internos de parsing
-# ---------------------------------------------------------------------------
+# Estas funciones convierten el texto del archivo en los datos internos del AP.
 
 def _parsear_reemplazo(texto):
-    """
-    Convierte el texto de un reemplazo en una tupla de tokens de Γ.
-
-    Reglas:
-      - 'EPS'   → ()          (desapilar sin insertar nada).
-      - 'A;Z0'  → ('A', 'Z0') (tokens separados por ';').
-      - ''      → error (campo vacío).
-      - 'A;EPS' → error (EPS mezclado con tokens).
-      - 'EPS;Z0'→ error (EPS mezclado con tokens).
-      - 'A;;Z0' → error (token vacío entre separadores).
-
-    Parámetros
-    ----------
-    texto : str  Texto crudo del campo reemplazo.
-
-    Retorna
-    -------
-    (tuple | None, str | None)
-        (tupla, None)  si no hay error.
-        (None, mensaje) si hay error.
-    """
+    # Convertimos el reemplazo en una tupla y devolvemos aparte cualquier error.
+    # EPS se convierte en (), y los demás símbolos se separan mediante ";".
     if texto == "":
         return None, "El campo reemplazo no puede estar vacío."
 
     if texto == EPS:
-        # Caso canónico: EPS solo representa desapilar sin insertar.
+        # Cuando el reemplazo es EPS, quitamos el tope sin insertar otro símbolo.
         return (), None
 
-    # Separar por ';' para obtener los tokens individuales.
+    # Los demás reemplazos se separan por ";" para conservar símbolos como Z0.
     partes = texto.split(";")
 
     tokens = []
@@ -116,7 +58,7 @@ def _parsear_reemplazo(texto):
                 "Reemplazo '{}': campo vacío entre separadores ';'.".format(texto)
             )
         if tok == EPS:
-            # EPS mezclado con otros tokens es ilegal (R04.3).
+            # EPS debe aparecer solo, porque representa un reemplazo vacío.
             return None, (
                 "Reemplazo '{}': EPS no puede mezclarse con otros tokens.".format(texto)
             )
@@ -126,38 +68,15 @@ def _parsear_reemplazo(texto):
 
 
 def _parsear_linea_transicion(linea, numero):
-    """
-    Descompone una línea de transición en una lista de cúplas listas para
-    ser añadidas al autómata.
-
-    Formato del primer tramo (5 campos separados por ','):
-        origen,entrada,tope,destino,reemplazo
-
-    Tramos adicionales APND (separados por '|', cada uno con 2 campos):
-        destino2,reemplazo2
-
-    El origen, entrada y tope se heredan del primer tramo.
-
-    Parámetros
-    ----------
-    linea  : str  Texto de la línea (ya sin salto de línea).
-    numero : int  Número de línea real para diagnósticos.
-
-    Retorna
-    -------
-    (list[(origen, entrada, tope, destino, reemplazo)] | None, list[str])
-        Si hay errores fatales → (None, [errores]).
-        Si todo es correcto → (lista_de_cúplas, []).
-        Errores recuperables parciales → (None, [errores]).
-    """
+    # El primer tramo define origen, entrada, tope, destino y reemplazo.
+    # Las alternativas posteriores solo cambian destino y reemplazo, por lo que
+    # heredan los tres primeros datos. También devolvemos los errores encontrados.
     errores = []
 
-    # Dividir por '|' para separar primer tramo de tramos APND adicionales.
+    # Separamos con "|" el tramo principal de las alternativas adicionales.
     tramos = linea.split("|")
 
-    # -----------------------------------------------------------------
-    # Primer tramo: debe tener exactamente 5 campos separados por ','.
-    # -----------------------------------------------------------------
+    # Primero comprobamos los cinco campos obligatorios de la transición.
     campos_primer = tramos[0].split(",")
     if len(campos_primer) != 5:
         errores.append(
@@ -168,7 +87,7 @@ def _parsear_linea_transicion(linea, numero):
 
     origen, entrada, tope, destino1, reemplazo1_txt = [c.strip() for c in campos_primer]
 
-    # Validar que ningún campo de posición fija esté vacío.
+    # Comprobamos que ninguno de los cinco campos obligatorios esté vacío.
     for nombre_campo, valor in [
         ("origen", origen),
         ("entrada", entrada),
@@ -184,7 +103,7 @@ def _parsear_linea_transicion(linea, numero):
     if errores:
         return None, errores
 
-    # Validar tokens de origen, tope y destino (no vacíos, sin caracteres especiales).
+    # El origen, el tope y el destino no admiten separadores ni espacios.
     for nombre_campo, valor in [
         ("origen", origen),
         ("tope", tope),
@@ -197,13 +116,13 @@ def _parsear_linea_transicion(linea, numero):
                 )
             )
 
-    # El tope nunca puede ser EPS (R04.3 + diseño).
+    # EPS no puede usarse como tope porque no es un símbolo de Γ.
     if tope == EPS:
         errores.append(
             "Línea {}: el tope de pila no puede ser EPS.".format(numero)
         )
 
-    # Parsear el reemplazo del primer tramo.
+    # Convertimos también el reemplazo del primer tramo a su forma interna.
     reemplazo1, error_remp = _parsear_reemplazo(reemplazo1_txt)
     if error_remp is not None:
         errores.append("Línea {}: {}.".format(numero, error_remp))
@@ -213,9 +132,7 @@ def _parsear_linea_transicion(linea, numero):
 
     resultado = [(origen, entrada, tope, destino1, reemplazo1)]
 
-    # -----------------------------------------------------------------
-    # Tramos adicionales APND (si los hay).
-    # -----------------------------------------------------------------
+    # Después procesamos las alternativas adicionales que puede tener un APND.
     for i, tramo in enumerate(tramos[1:], start=2):
         campos_alt = tramo.split(",")
         if len(campos_alt) != 2:
@@ -269,21 +186,8 @@ def _parsear_linea_transicion(linea, numero):
 
 
 def _convertir_lista(texto, nombre_campo, permitir_vacio):
-    """
-    Convierte un texto separado por comas en una lista de tokens sin duplicados.
-
-    Parámetros
-    ----------
-    texto          : str   Texto crudo (puede estar vacío).
-    nombre_campo   : str   Nombre para diagnósticos.
-    permitir_vacio : bool  Si False, requiere al menos un elemento.
-
-    Retorna
-    -------
-    (list[str] | None, str | None)
-        (lista, None)   si no hay error.
-        (None, mensaje) si hay error.
-    """
+    # Convertimos un campo separado por comas en una lista sin duplicados.
+    # El resultado y el posible mensaje de error se devuelven por separado.
     if texto.strip() == "":
         if permitir_vacio:
             return [], None
@@ -301,7 +205,7 @@ def _convertir_lista(texto, nombre_campo, permitir_vacio):
             )
         elementos.append(elem)
 
-    # Detectar duplicados antes de convertir a set (R03.7).
+    # Buscamos duplicados antes de convertir la lista en un conjunto.
     vistos = set()
     for elem in elementos:
         if elem in vistos:
@@ -316,33 +220,16 @@ def _convertir_lista(texto, nombre_campo, permitir_vacio):
 
 
 def _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_acum):
-    """
-    Construye un AutomataPila a partir de los encabezados ya parseados y
-    las líneas de transición crudas.  Añade errores a errores_acum.
-
-    Parámetros
-    ----------
-    datos_enc        : dict   Mapa clave→valor de encabezados.
-    lineas_transicion: list   Lista de (numero_linea, texto_linea).
-    errores_acum     : list   Lista mutable donde se acumulan errores.
-
-    Retorna
-    -------
-    AutomataPila | None
-    """
+    # Armamos el AP con los encabezados y las transiciones ya separadas.
+    # Los problemas se agregan a errores_acum para poder mostrarlos juntos.
     ap = AutomataPila()
 
-    # ---------------------------------------------------------------
-    # Asignar nombre
-    # ---------------------------------------------------------------
+    # Comenzamos con el nombre y el tipo declarados en el archivo.
     nombre = datos_enc.get("NOMBRE", "").strip()
     if nombre == "":
         errores_acum.append("NOMBRE no puede estar vacío.")
     ap.nombre = nombre
 
-    # ---------------------------------------------------------------
-    # Asignar tipo
-    # ---------------------------------------------------------------
     tipo = datos_enc.get("TIPO", "").strip()
     if tipo not in ("APD", "APND"):
         errores_acum.append(
@@ -350,9 +237,7 @@ def _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_acum):
         )
     ap.tipo = tipo
 
-    # ---------------------------------------------------------------
-    # Conjuntos: ESTADOS, ALFABETO, ALFABETO_PILA, FINALES
-    # ---------------------------------------------------------------
+    # Luego convertimos los campos que representan conjuntos del autómata.
     estados_lista, err = _convertir_lista(
         datos_enc.get("ESTADOS", ""), "ESTADOS", permitir_vacio=False
     )
@@ -381,8 +266,7 @@ def _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_acum):
         errores_acum.append("FINALES: " + err)
         finales_lista = []
 
-    # EPS no puede aparecer en Σ ni en Γ (R04.3), detectar aquí para
-    # dar un mensaje en contexto de encabezado antes de llegar al validador.
+    # Detectamos EPS en Σ o Γ desde los encabezados para dar un mensaje directo.
     if EPS in alfabeto_lista:
         errores_acum.append(
             "ALFABETO: '{}' está reservado y no puede pertenecer a Σ.".format(EPS)
@@ -397,33 +281,23 @@ def _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_acum):
     ap.alfabeto_pila = set(alfa_pila_lista)
     ap.estados_finales = set(finales_lista)
 
-    # ---------------------------------------------------------------
-    # Estado inicial
-    # ---------------------------------------------------------------
+    # Guardamos el estado inicial y el símbolo que inicia la pila.
     ap.estado_inicial = datos_enc.get("INICIAL", "").strip()
 
-    # ---------------------------------------------------------------
-    # Símbolo inicial de pila
-    # ---------------------------------------------------------------
     ap.simbolo_inicial_pila = datos_enc.get("INICIAL_PILA", "").strip()
 
-    # ---------------------------------------------------------------
-    # Si hubo errores en encabezados, no continuar con transiciones
-    # para evitar mensajes en cascada inútiles.
-    # ---------------------------------------------------------------
+    # Si los encabezados fallaron, evitamos producir errores en cascada.
     if errores_acum:
         return None
 
-    # ---------------------------------------------------------------
-    # Procesar líneas de transición
-    # ---------------------------------------------------------------
+    # Con la definición básica correcta, ya podemos procesar las transiciones.
     for numero_linea, texto_linea in lineas_transicion:
         entradas, errs_linea = _parsear_linea_transicion(texto_linea, numero_linea)
         if errs_linea:
             errores_acum.extend(errs_linea)
             continue
 
-        # Validación de pertenencia a Q, Σ, Γ (R03.6: separar sintaxis de semántica).
+        # Después de revisar la sintaxis, comprobamos la pertenencia a Q, Σ y Γ.
         for origen, entrada, tope, destino, reemplazo in entradas:
             error_semantico = False
 
@@ -471,7 +345,7 @@ def _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_acum):
             if error_semantico:
                 continue
 
-            # Intentar agregar; agregar_alternativa retorna False si es duplicado exacto.
+            # El modelo devuelve False cuando la alternativa es un duplicado exacto.
             agregado = ap.agregar_alternativa(origen, entrada, tope, destino, reemplazo)
             if not agregado:
                 errores_acum.append(
@@ -488,31 +362,10 @@ def _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_acum):
     return ap
 
 
-# ---------------------------------------------------------------------------
-# Función pública: cargar_archivo
-# ---------------------------------------------------------------------------
-
 def cargar_archivo(ruta):
-    """
-    Carga un AutomataPila desde un archivo .txt con formato AP.
-
-    El proceso es completamente atómico: si cualquier error aparece (sintaxis,
-    semántica o validación estructural) la función imprime los errores y
-    retorna None sin modificar ningún estado externo.
-
-    Parámetros
-    ----------
-    ruta : str  Ruta al archivo.  Se aceptan rutas con espacios y comillas
-                exteriores (simple o doble) coincidentes.
-
-    Retorna
-    -------
-    AutomataPila  si la carga y validación son exitosas.
-    None          si hay cualquier error.
-    """
-    # ------------------------------------------------------------------
-    # Normalizar ruta y verificar extensión.
-    # ------------------------------------------------------------------
+    # Cargamos y validamos el archivo completo antes de devolver el AP.
+    # Ante cualquier error se muestra el diagnóstico y se devuelve None.
+    # Primero normalizamos la ruta y comprobamos que sea un archivo de texto.
     try:
         ruta_norm = CargadorAFD.normalizar_ruta(ruta)
     except ValueError as exc:
@@ -524,9 +377,7 @@ def cargar_archivo(ruta):
         print("Error: el archivo debe tener extensión .txt")
         return None
 
-    # ------------------------------------------------------------------
-    # Leer el archivo.
-    # ------------------------------------------------------------------
+    # Abrimos el archivo con soporte para UTF-8 y su marca BOM opcional.
     try:
         with open(ruta_norm, "r", encoding="utf-8-sig") as archivo:
             lineas = archivo.readlines()
@@ -534,9 +385,7 @@ def cargar_archivo(ruta):
         print("Error: no fue posible abrir el archivo:", exc)
         return None
 
-    # ------------------------------------------------------------------
-    # Parsear encabezados y transiciones.
-    # ------------------------------------------------------------------
+    # Separamos los encabezados de las líneas que definen transiciones.
     errores = []
     datos_enc = {}       # clave → valor de los encabezados encontrados
     enc_vistos = set()   # para detectar repetición
@@ -549,7 +398,7 @@ def cargar_archivo(ruta):
         linea_limpia = linea.strip()        # para encabezados y transiciones
 
         if en_transiciones:
-            # Dentro de la sección de transiciones.
+            # Al entrar en TRANSICIONES, cada línea debe describir una transición.
             if linea_limpia == "":
                 # Línea vacía es un error de formato en el cuerpo del AP.
                 errores.append(
@@ -560,7 +409,7 @@ def cargar_archivo(ruta):
             lineas_transicion.append((numero, linea_limpia))
             continue
 
-        # Antes de TRANSICIONES:
+        # Antes de TRANSICIONES solo esperamos encabezados con sus valores.
         if linea_limpia == "":
             # Línea vacía antes de TRANSICIONES también es error.
             errores.append(
@@ -574,7 +423,7 @@ def cargar_archivo(ruta):
             en_transiciones = True
             continue
 
-        # Intentar hacer coincidir con un encabezado CLAVE=valor.
+        # Interpretamos la línea como un encabezado con la forma CLAVE=valor.
         m = _RE_ENCABEZADO.match(linea_limpia)
         if m is None:
             errores.append(
@@ -600,11 +449,11 @@ def cargar_archivo(ruta):
         enc_vistos.add(clave)
         datos_enc[clave] = valor
 
-    # Verificar que TRANSICIONES: haya aparecido.
+    # El marcador TRANSICIONES: es obligatorio aunque la sección quede vacía.
     if not en_transiciones and not errores:
         errores.append("No se encontró el marcador 'TRANSICIONES:'.")
 
-    # Verificar que todos los encabezados obligatorios estén presentes.
+    # También comprobamos que no falte ningún encabezado obligatorio.
     for enc in _ENCABEZADOS_AP:
         if enc not in enc_vistos:
             errores.append("Encabezado obligatorio '{}' no encontrado.".format(enc))
@@ -615,9 +464,7 @@ def cargar_archivo(ruta):
             print(" -", e)
         return None
 
-    # ------------------------------------------------------------------
-    # Construir el AP con los datos obtenidos.
-    # ------------------------------------------------------------------
+    # Con el formato revisado, construimos el AP con los datos obtenidos.
     errores_construccion = []
     ap = _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_construccion)
 
@@ -627,9 +474,7 @@ def cargar_archivo(ruta):
             print(" -", e)
         return None
 
-    # ------------------------------------------------------------------
-    # Validación estructural y de determinismo (ValidadorAP).
-    # ------------------------------------------------------------------
+    # Al final comprobamos tanto la estructura como el determinismo declarado.
     valido, errores_val = ValidadorAP.validar(ap)
     if not valido:
         print("\nEl autómata no pasó la validación:")
@@ -643,30 +488,15 @@ def cargar_archivo(ruta):
     return ap
 
 
-# ---------------------------------------------------------------------------
-# Función pública: crear_manual
-# ---------------------------------------------------------------------------
-
 def crear_manual():
-    """
-    Guía al usuario a través de la creación manual de un APD o APND.
-
-    Sigue el mismo flujo que CargadorAFD.crear_manual pero adaptado a la
-    séptupla de AP: Q, Σ, Γ, q0, Z0, F y transiciones.
-
-    Retorna
-    -------
-    AutomataPila  si la definición es válida.
-    None          si el usuario cancela o la definición es inválida.
-    """
+    # Pedimos uno por uno los componentes de la séptupla del AP.
+    # Devolvemos el autómata validado, o None si se cancela o queda inválido.
     print("\n=== CREACION MANUAL DEL AUTOMATA DE PILA ===")
     print("(Presione Enter en el nombre para cancelar.)")
 
     ap = AutomataPila()
 
-    # ------------------------------------------------------------------
-    # Nombre
-    # ------------------------------------------------------------------
+    # Empezamos por el nombre, que también permite cancelar la creación.
     while True:
         nombre = input("Nombre del autómata: ").strip()
         if nombre == "":
@@ -675,9 +505,7 @@ def crear_manual():
         ap.nombre = nombre
         break
 
-    # ------------------------------------------------------------------
-    # Tipo
-    # ------------------------------------------------------------------
+    # El tipo indica si se aplicarán las reglas de APD o de APND.
     while True:
         tipo = input("Tipo (APD / APND): ").strip().upper()
         if tipo in ("APD", "APND"):
@@ -685,9 +513,7 @@ def crear_manual():
             break
         print("Error: el tipo debe ser APD o APND.")
 
-    # ------------------------------------------------------------------
-    # Conjunto de estados Q
-    # ------------------------------------------------------------------
+    # Recibimos el conjunto de estados Q sin aceptar duplicados.
     while True:
         texto = input("Estados separados por coma (ej. q0,q1,q2): ").strip()
         if texto == "":
@@ -700,9 +526,7 @@ def crear_manual():
         ap.estados = set(lista)
         break
 
-    # ------------------------------------------------------------------
-    # Alfabeto de entrada Σ (puede estar vacío para autómata solo-EPS)
-    # ------------------------------------------------------------------
+    # El alfabeto de entrada puede quedar vacío si el autómata solo usa EPS.
     while True:
         texto = input(
             "Alfabeto de entrada separado por coma (Enter si solo usa EPS): "
@@ -719,9 +543,7 @@ def crear_manual():
         ap.alfabeto = set(lista)
         break
 
-    # ------------------------------------------------------------------
-    # Alfabeto de pila Γ
-    # ------------------------------------------------------------------
+    # El alfabeto de pila debe contener al menos el símbolo inicial que se elegirá.
     while True:
         texto = input(
             "Alfabeto de pila separado por coma (ej. Z0,A): "
@@ -738,9 +560,7 @@ def crear_manual():
         ap.alfabeto_pila = set(lista)
         break
 
-    # ------------------------------------------------------------------
-    # Estado inicial q0
-    # ------------------------------------------------------------------
+    # El estado inicial debe ser uno de los estados definidos en Q.
     while True:
         q0 = input("Estado inicial (debe estar en Q): ").strip()
         if q0 in ap.estados:
@@ -748,9 +568,7 @@ def crear_manual():
             break
         print("Error: '{}' no pertenece a Q.".format(q0))
 
-    # ------------------------------------------------------------------
-    # Símbolo inicial de pila Z0
-    # ------------------------------------------------------------------
+    # El símbolo inicial de pila debe pertenecer a Γ.
     while True:
         z0 = input("Símbolo inicial de pila Z0 (debe estar en Γ): ").strip()
         if z0 in ap.alfabeto_pila:
@@ -758,9 +576,7 @@ def crear_manual():
             break
         print("Error: '{}' no pertenece a Γ.".format(z0))
 
-    # ------------------------------------------------------------------
-    # Estados finales F (pueden ser vacíos)
-    # ------------------------------------------------------------------
+    # Los estados finales pueden quedar vacíos, pero ninguno puede estar fuera de Q.
     while True:
         texto = input(
             "Estados finales separados por coma (Enter si F es vacío): "
@@ -781,9 +597,7 @@ def crear_manual():
         ap.estados_finales = finales
         break
 
-    # ------------------------------------------------------------------
-    # Transiciones
-    # ------------------------------------------------------------------
+    # Por último recibimos las transiciones hasta que el usuario deje la línea vacía.
     print("\nIngrese transiciones en el formato:")
     print("  APD/APND:  origen,entrada,tope,destino,reemplazo")
     print("  APND alt:  origen,entrada,tope,destino1,reemplazo1|destino2,reemplazo2")
@@ -805,7 +619,7 @@ def crear_manual():
             print("  La línea no se agregó; corrija e intente de nuevo.")
             continue
 
-        # Validación semántica de pertenencia a Q, Σ, Γ.
+        # Con la sintaxis correcta, comprobamos la pertenencia a Q, Σ y Γ.
         hay_error_semantico = False
         for origen, entrada, tope, destino, reemplazo in entradas_man:
             if origen not in ap.estados:
@@ -854,9 +668,7 @@ def crear_manual():
             else:
                 numero_virtual += 1
 
-    # ------------------------------------------------------------------
-    # Validación estructural final.
-    # ------------------------------------------------------------------
+    # Antes de entregar el AP hacemos una última validación de toda la estructura.
     valido, errores_val = ValidadorAP.validar(ap)
     if not valido:
         print("\nEl autómata no pasó la validación:")

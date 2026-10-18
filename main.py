@@ -1,9 +1,9 @@
-"""Menú principal del motor de autómatas: AFD, AFND y Autómatas de Pila."""
+# Este archivo coordina el menú principal para AFD, AFND y autómatas de pila.
 
 import os
 from copy import deepcopy
 
-# --- Módulos de fases 1 y 2 ---
+# Importamos los módulos de AFD y AFND que ya existían en las fases 1 y 2.
 from AFD import AFD
 from AFND import AFND
 from CargadorAFD import CargadorAFD
@@ -13,7 +13,7 @@ from SimuladorAFD import SimuladorAFD
 from ValidadorAFD import ValidadorAFD
 from ValidadorAFND import ValidadorAFND
 
-# --- Módulos de fase 3: Autómatas de Pila ---
+# Estos módulos agregan el manejo directo de APD y APND de la fase 3.
 from AutomataPila import AutomataPila, EPS
 import CargadorAP
 import ValidadorAP
@@ -23,12 +23,8 @@ from SimuladorAP import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Presentación del menú
-# ---------------------------------------------------------------------------
-
+# Mostramos juntas las opciones de las tres fases para conservar una sola interfaz.
 def mostrar_menu():
-    """Muestra las dieciocho opciones de las tres fases del proyecto."""
     print("\n" + "=" * 68)
     print("MOTOR DE VALIDACIÓN Y CONVERSIÓN DE AUTÓMATAS".center(68))
     print("elaborado por: Gerber Perez y Marco Donadio".center(68))
@@ -54,12 +50,8 @@ def mostrar_menu():
     print("18. Ajustar el límite de exploración para AP")
 
 
-# ---------------------------------------------------------------------------
-# Lógica de AFD y AFND (sin cambios de la fase 2)
-# ---------------------------------------------------------------------------
-
+# Validamos el autómata activo con las reglas que corresponden a su tipo.
 def mostrar_validacion(automata):
-    """Valida el tipo de autómata activo y muestra un reporte comprensible."""
     if automata is None:
         print("\nError: primero debe crear o cargar un autómata.")
         return
@@ -94,8 +86,8 @@ def mostrar_validacion(automata):
             print("Nueva clasificación:", ValidadorAFD.clasificar(automata))
 
 
+# Elegimos entre un AFD cargado directamente y el equivalente generado desde un AFND.
 def obtener_afd_operativo(automata, afd_generado):
-    """Selecciona el AFD directo o el resultado de una conversión."""
     if isinstance(automata, AFD):
         return automata
     if isinstance(automata, AFND):
@@ -108,8 +100,8 @@ def obtener_afd_operativo(automata, afd_generado):
     return None
 
 
+# Antes de simular comprobamos que el AFD sea válido, completo y determinista.
 def asegurar_afd_valido(afd):
-    """Impide simulaciones sobre un AFD inválido, incompleto o no determinista."""
     if afd is None:
         return False
     valido, errores = ValidadorAFD.validar(afd)
@@ -121,8 +113,8 @@ def asegurar_afd_valido(afd):
     return False
 
 
+# Cada línea del archivo se toma como una cadena distinta para el AFD.
 def evaluar_archivo_cadenas_afd(afd):
-    """Evalúa cada línea de un archivo sobre un AFD."""
     if not asegurar_afd_valido(afd):
         return
     ruta = input("Ruta del archivo de cadenas: ").strip()
@@ -139,8 +131,8 @@ def evaluar_archivo_cadenas_afd(afd):
         print("Error: no fue posible leer el archivo:", error)
 
 
+# Recorremos el historial del AFD activo en el mismo orden en que se evaluó.
 def mostrar_historial_afd(afd):
-    """Muestra las evaluaciones del AFD activo en orden cronológico."""
     if afd is None:
         return
     if not afd.historial:
@@ -155,8 +147,8 @@ def mostrar_historial_afd(afd):
         )
 
 
+# El análisis del AFD identifica alcanzables, inaccesibles y finales alcanzables.
 def mostrar_analisis_afd(afd):
-    """Presenta accesibilidad, estados inútiles y posible lenguaje vacío de un AFD."""
     if not asegurar_afd_valido(afd):
         return
     analisis = ValidadorAFD.analizar_estructura(afd)
@@ -173,8 +165,8 @@ def mostrar_analisis_afd(afd):
         print("El lenguaje no es vacío: existe al menos un estado final alcanzable.")
 
 
+# Reunimos en un solo punto las cuatro formas de crear o cargar un AFD o AFND.
 def crear_o_cargar_afxnd(opcion=None):
-    """Centraliza las cuatro formas de ingresar un AFD o AFND."""
     if opcion is None:
         print("\n1. Crear AFD manualmente")
         print("2. Cargar AFD desde archivo")
@@ -196,8 +188,8 @@ def crear_o_cargar_afxnd(opcion=None):
     return None
 
 
+# Al recibir un AFND válido, mostramos su tabla y preparamos su AFD equivalente.
 def preparar_nuevo_automata_afxnd(automata):
-    """Valida un AFND, muestra su tabla y ejecuta la conversión automática."""
     if not isinstance(automata, AFND):
         return None, {}
     valido, errores = ValidadorAFND.validar(automata)
@@ -215,12 +207,8 @@ def preparar_nuevo_automata_afxnd(automata):
     return afd, equivalencias
 
 
-# ---------------------------------------------------------------------------
-# Lógica de AP (fase 3)
-# ---------------------------------------------------------------------------
-
+# Los AP se validan y simulan directamente con pila, sin convertirlos a AFD.
 def mostrar_validacion_ap(ap):
-    """Valida el AP activo y muestra el reporte."""
     valido, errores = ValidadorAP.validar(ap)
     tipo = ap.tipo
     print("\n--- VALIDACIÓN DEL {} ---".format(tipo))
@@ -228,8 +216,8 @@ def mostrar_validacion_ap(ap):
     _mostrar_lista_errores(errores)
 
 
+# Evaluamos una cadena con el presupuesto actual y guardamos los resultados concluyentes.
 def evaluar_cadena_ap(ap, limite):
-    """Evalúa una cadena individual sobre el AP activo."""
     cadena = input("Ingrese la cadena (Enter representa ε): ")
     resultado = SimuladorAP.evaluar_y_mostrar(ap, cadena, limite=limite)
     # Registrar en historial solo evaluaciones que no sean ENTRADA_INVALIDA
@@ -246,8 +234,8 @@ def evaluar_cadena_ap(ap, limite):
         ap.agregar_evaluacion_historial(resumen)
 
 
+# Cada cadena del lote recibe una pila nueva y su propio presupuesto de exploración.
 def evaluar_archivo_cadenas_ap(ap, limite):
-    """Evalúa cada línea de un archivo sobre el AP activo."""
     if not ap.es_valido:
         print("\nError: el AP no está validado. Use la opción 6.")
         return
@@ -279,8 +267,8 @@ def evaluar_archivo_cadenas_ap(ap, limite):
         print("Error: no fue posible leer el archivo:", error)
 
 
+# El historial se mantiene dentro del AP para no mezclar evaluaciones de otras sesiones.
 def mostrar_historial_ap(ap):
-    """Muestra el historial de evaluaciones del AP activo."""
     if not ap.historial:
         print("\nNo hay evaluaciones registradas para este AP.")
         return
@@ -297,16 +285,9 @@ def mostrar_historial_ap(ap):
         )
 
 
+# Por ahora este análisis solo describe la conectividad del grafo. No asegura
+# que un camino pueda ejecutarse porque ignora la entrada y la pila.
 def mostrar_analisis_ap(ap):
-    """
-    Análisis estructural del AP.
-
-    D03 (DECISIONES.md) está pendiente de resolución. Mientras tanto se
-    muestra únicamente conectividad orientativa del grafo de estados, con
-    la aclaración explícita de que no demuestra que haya una ejecución
-    realizable ni que el lenguaje sea no vacío (el grafo ignora pila y
-    entrada).
-    """
     print("\n--- ANÁLISIS ESTRUCTURAL ({}) ---".format(ap.tipo))
     print("NOTA: El siguiente análisis se basa en conectividad del grafo de estados.")
     print("      No tiene en cuenta la pila ni los símbolos de entrada.")
@@ -317,7 +298,7 @@ def mostrar_analisis_ap(ap):
         print("Sin estados definidos.")
         return
 
-    # Calcular estados alcanzables desde q0 ignorando pila y entrada.
+    # Recorremos los estados desde q0 sin considerar la pila ni la entrada.
     alcanzables = set()
     frontera = {ap.estado_inicial}
     while frontera:
@@ -346,8 +327,8 @@ def mostrar_analisis_ap(ap):
         print("             (No implica lenguaje no vacío: depende de la pila y la entrada.)")
 
 
+# Solo aceptamos límites enteros positivos y conservamos el anterior al cancelar.
 def ajustar_limite_ap(limite_actual):
-    """Solicita un nuevo límite de exploración y lo valida."""
     print("\nLímite actual de exploración AP:", limite_actual)
     while True:
         texto = input("Nuevo límite (entero positivo, Enter para cancelar): ").strip()
@@ -366,10 +347,7 @@ def ajustar_limite_ap(limite_actual):
         return nuevo
 
 
-# ---------------------------------------------------------------------------
-# Helpers comunes
-# ---------------------------------------------------------------------------
-
+# Estas funciones pequeñas mantienen uniforme la presentación del menú.
 def _mostrar_lista_errores(errores):
     if not errores:
         print("No se encontraron errores estructurales.")
@@ -384,34 +362,17 @@ def _formatear_conjunto(elementos):
     return "{" + ", ".join(sorted(elementos)) + "}"
 
 
+# Copiamos solo la definición para detectar cambios sin comparar el historial.
 def _copiar_definicion(automata):
-    """Guarda los componentes para detectar cambios sin incluir historial."""
     return deepcopy((
         automata.nombre, automata.estados, automata.alfabeto,
         automata.estado_inicial, automata.estados_finales, automata.transiciones
     ))
 
 
-# ---------------------------------------------------------------------------
-# Bucle principal
-# ---------------------------------------------------------------------------
-
+# El ciclo principal maneja por separado la sesión AFD/AFND y la sesión AP.
+# Solo una de ellas queda activa para que las opciones del menú no sean ambiguas.
 def main():
-    """
-    Mantiene la sesión activa de autómatas.
-
-    Variables de sesión:
-      automata_actual  — AFD o AFND cargado actualmente (fases 1/2).
-      afd_generado     — AFD equivalente producido por conversión de AFND.
-      equivalencias    — Mapa macroestado → subconjunto AFND.
-      ap_actual        — AutomataPila activo (APD o APND, fase 3).
-      limite_ap        — Presupuesto de exploración para AP (por defecto 10 000).
-
-    Las sesiones son independientes: cargar un AP no borra el AFD/AFND,
-    y viceversa.  Las opciones 5-13 operan sobre el tipo activo pertinente
-    (AFD/AFND o AP según cuál esté cargado) con mensajes comprensibles cuando
-    la opción no aplica al tipo activo.
-    """
     automata_actual = None   # AFD o AFND (activo cuando ap_actual es None)
     afd_generado = None      # resultado de conversión de AFND
     equivalencias = {}
@@ -442,9 +403,7 @@ def main():
                 definicion_convertida = None
                 print("El AFND cambió; vuelva a convertirlo antes de usar su equivalente.")
 
-            # ----------------------------------------------------------
-            # Opciones 1-4: crear o cargar AFD/AFND
-            # ----------------------------------------------------------
+            # Las opciones 1 a 4 crean o cargan un AFD o AFND.
             if opcion in ("1", "2", "3", "4"):
                 nuevo = crear_o_cargar_afxnd(opcion)
                 if nuevo is not None:
@@ -461,9 +420,7 @@ def main():
                     ap_actual = None
                     print("\nAutómata cargado. Los datos anteriores de AFD/AFND fueron limpiados.")
 
-            # ----------------------------------------------------------
-            # Opción 5: mostrar definición del autómata activo
-            # ----------------------------------------------------------
+            # La opción 5 muestra la definición del autómata que esté activo.
             elif opcion == "5":
                 if ap_actual is not None:
                     # Si hay un AP activo, mostrarlo
@@ -474,9 +431,7 @@ def main():
                 else:
                     print("\nError: primero debe crear o cargar un autómata.")
 
-            # ----------------------------------------------------------
-            # Opción 6: validar autómata activo
-            # ----------------------------------------------------------
+            # La opción 6 aplica el validador propio del autómata activo.
             elif opcion == "6":
                 if ap_actual is not None:
                     mostrar_validacion_ap(ap_actual)
@@ -489,9 +444,7 @@ def main():
                 else:
                     print("\nError: primero debe crear o cargar un autómata.")
 
-            # ----------------------------------------------------------
-            # Opción 7: convertir AFND (no aplica a AP)
-            # ----------------------------------------------------------
+            # La conversión de la opción 7 pertenece únicamente a los AFND.
             elif opcion == "7":
                 if ap_actual is not None:
                     print("\nEsta opción convierte un AFND a AFD.")
@@ -516,9 +469,7 @@ def main():
                         print("\nAFND convertido correctamente en un AFD equivalente.")
                         print("Macroestados generados:", len(equivalencias))
 
-            # ----------------------------------------------------------
-            # Opción 8: equivalencias de macroestados (no aplica a AP)
-            # ----------------------------------------------------------
+            # La opción 8 muestra cómo cada macroestado representa estados del AFND.
             elif opcion == "8":
                 if ap_actual is not None:
                     print("\nEsta opción muestra equivalencias de macroestados AFND→AFD.")
@@ -526,9 +477,7 @@ def main():
                 else:
                     ConvertidorAFND.mostrar_equivalencias(equivalencias)
 
-            # ----------------------------------------------------------
-            # Opción 9: definición del AFD generado (no aplica a AP)
-            # ----------------------------------------------------------
+            # La opción 9 permite revisar el AFD que produjo la conversión.
             elif opcion == "9":
                 if ap_actual is not None:
                     print("\nEsta opción muestra el AFD equivalente de un AFND.")
@@ -540,9 +489,7 @@ def main():
                     print("\n--- TABLA DE TRANSICIONES DEL AFD GENERADO ---")
                     afd_generado.mostrar_tabla_transicion()
 
-            # ----------------------------------------------------------
-            # Opción 10: evaluar una cadena
-            # ----------------------------------------------------------
+            # La opción 10 envía la cadena al simulador del tipo activo.
             elif opcion == "10":
                 if ap_actual is not None:
                     evaluar_cadena_ap(ap_actual, limite_ap)
@@ -554,9 +501,7 @@ def main():
                         if resultado not in ("Aceptada", "Rechazada"):
                             print("Error:", resultado)
 
-            # ----------------------------------------------------------
-            # Opción 11: evaluar archivo de cadenas
-            # ----------------------------------------------------------
+            # La opción 11 procesa las cadenas de un archivo una por una.
             elif opcion == "11":
                 if ap_actual is not None:
                     evaluar_archivo_cadenas_ap(ap_actual, limite_ap)
@@ -564,9 +509,7 @@ def main():
                     afd = obtener_afd_operativo(automata_actual, afd_generado)
                     evaluar_archivo_cadenas_afd(afd)
 
-            # ----------------------------------------------------------
-            # Opción 12: historial
-            # ----------------------------------------------------------
+            # La opción 12 consulta únicamente el historial de la sesión activa.
             elif opcion == "12":
                 if ap_actual is not None:
                     mostrar_historial_ap(ap_actual)
@@ -574,9 +517,7 @@ def main():
                     afd = obtener_afd_operativo(automata_actual, afd_generado)
                     mostrar_historial_afd(afd)
 
-            # ----------------------------------------------------------
-            # Opción 13: análisis estructural
-            # ----------------------------------------------------------
+            # La opción 13 usa el análisis disponible para cada familia de autómata.
             elif opcion == "13":
                 if ap_actual is not None:
                     mostrar_analisis_ap(ap_actual)
@@ -584,9 +525,7 @@ def main():
                     afd = obtener_afd_operativo(automata_actual, afd_generado)
                     mostrar_analisis_afd(afd)
 
-            # ----------------------------------------------------------
-            # Opción 14: cargar o crear otro AFD/AFND
-            # ----------------------------------------------------------
+            # La opción 14 reemplaza la sesión AFD/AFND después de una carga válida.
             elif opcion == "14":
                 nuevo = crear_o_cargar_afxnd()
                 if nuevo is not None:
@@ -603,16 +542,12 @@ def main():
                     ap_actual = None
                     print("\nNuevo autómata AFD/AFND cargado; sesión anterior limpiada.")
 
-            # ----------------------------------------------------------
-            # Opción 15: salir
-            # ----------------------------------------------------------
+            # La opción 15 termina el ciclo principal.
             elif opcion == "15":
                 print("\nPrograma finalizado.")
                 break
 
-            # ----------------------------------------------------------
-            # Opción 16: crear AP manualmente
-            # ----------------------------------------------------------
+            # La opción 16 crea un AP desde la terminal y lo deja activo si es válido.
             elif opcion == "16":
                 nuevo_ap = CargadorAP.crear_manual()
                 if nuevo_ap is not None:
@@ -624,9 +559,7 @@ def main():
                     definicion_convertida = None
                     print("\nAP ({}) cargado como autómata activo de pila.".format(ap_actual.tipo))
 
-            # ----------------------------------------------------------
-            # Opción 17: cargar AP desde archivo
-            # ----------------------------------------------------------
+            # La opción 17 carga un AP desde un archivo y conserva la sesión si falla.
             elif opcion == "17":
                 ruta = input("Ruta del archivo AP (.txt): ").strip()
                 nuevo_ap = CargadorAP.cargar_archivo(ruta)
@@ -639,9 +572,7 @@ def main():
                     definicion_convertida = None
                     print("\nAP ({}) cargado como autómata activo de pila.".format(ap_actual.tipo))
 
-            # ----------------------------------------------------------
-            # Opción 18: ajustar límite de exploración AP
-            # ----------------------------------------------------------
+            # La opción 18 cambia el presupuesto que recibirá cada evaluación de AP.
             elif opcion == "18":
                 limite_ap = ajustar_limite_ap(limite_ap)
 

@@ -1,44 +1,7 @@
-"""
-SimuladorAP.py — Motor de simulación BFS para Autómatas de Pila (APD/APND).
-
-Implementa la exploración por niveles (BFS) sobre la séptupla del AP.
-No usa recursión para explorar ramas; usa collections.deque.
-No impone un timeout oculto que devuelva RECHAZADA.
-
-Acuerdos de diseño relevantes (docs/kiro/DECISIONES.md):
-  D01  — BFS con deque; pila como tupla; presupuesto al admitir.
-  D05  — Aceptación: entrada consumida + estado ∈ F; no exige pila vacía.
-
-Convención de pila (AutomataPila.py):
-  La pila es una tupla de tokens de Γ; el TOPE está en el ÍNDICE 0.
-  Sustitución al aplicar una transición:
-      nueva_pila = reemplazo + pila[1:]
-  Ejemplo: pila=('A','Z0'), reemplazo=('B','C') → ('B','C','Z0').
-
-Por qué EPS no avanza la posición:
-  EPS como símbolo de entrada representa una transición espontánea;
-  el autómata actúa sin consumir el siguiente símbolo de la cadena.
-
-Por qué el presupuesto se aplica al ADMITIR y no al desencolar:
-  Si se aplicara al desencolar, la frontera pendiente podría crecer sin
-  cota, desbordando la memoria antes de que el límite sea relevante.
-  Aplicarlo al admitir garantiza que la cola nunca supera `limite` nodos.
-
-Por qué una raíz ya admitida (admitidas=1, límite=1) se puede procesar:
-  El límite es de admisión, no de procesamiento. El nodo raíz ya fue
-  contado al encolarlo (admitidas=1). Sacarlo de la cola y procesarlo
-  no requiere una nueva admisión; si acepta, el resultado es ACEPTADA.
-
-Detección de ciclos (dentro del mismo camino):
-  Cada nodo lleva un frozenset `ancestros` con las configuraciones de
-  todos sus antecesores en el camino (estado, posicion, pila_completa).
-  Si la nueva configuración ya está en `ancestros`, ese camino ha entrado
-  en un ciclo: seguir explorándolo nunca produciría una aceptación que no
-  pudiera alcanzarse por otro medio dentro del presupuesto.
-  IMPORTANTE: misma pareja (estado, posicion) con PILA DIFERENTE NO es
-  ciclo; pueden ser ejecuciones distintas con diferente contenido de pila.
-  La clave de ciclo incluye la pila completa.
-"""
+# Este simulador recorre por niveles las ramas de un APD o APND.
+# La pila es una tupla con el tope en el índice 0 y EPS no consume entrada.
+# Una cadena se acepta cuando se consumió completa y el estado es final,
+# sin exigir que la pila quede vacía.
 
 import collections
 from dataclasses import dataclass, field
@@ -47,39 +10,16 @@ from typing import Optional
 from AutomataPila import EPS
 
 
-# ---------------------------------------------------------------------------
-# Constantes de resultado (R07, diseño.md)
-# ---------------------------------------------------------------------------
-
+# Estos cuatro estados distinguen un rechazo real de un límite de recursos.
 ACEPTADA            = "ACEPTADA"
 RECHAZADA           = "RECHAZADA"
 DETENIDA_POR_LIMITE = "DETENIDA_POR_LIMITE"
 ENTRADA_INVALIDA    = "ENTRADA_INVALIDA"
 
 
-# ---------------------------------------------------------------------------
-# ResultadoSimulacion
-# ---------------------------------------------------------------------------
-
+# Reúne el veredicto, los contadores y el camino que demuestra una aceptación.
 @dataclass
 class ResultadoSimulacion:
-    """
-    Resumen estructurado de la ejecución del motor BFS sobre un AP.
-
-    Campos
-    ------
-    estado_resultado  : una de las cuatro constantes de módulo.
-    motivo            : explicación breve del resultado.
-    cadena            : cadena evaluada (tal como la recibió evaluar).
-    admitidas         : número de nodos que entraron en la cola.
-    procesadas        : número de nodos que salieron de la cola y se procesaron.
-    generadas         : número total de alternativas generadas (intentos de expansión).
-    podadas_limite    : alternativas no admitidas por presupuesto agotado.
-    limite_usado      : valor del límite aplicado en esta evaluación.
-    pasos             : lista de diccionarios con eventos de la exploración.
-    id_nodo_aceptador : id del nodo que satisfizo la condición de aceptación, o None.
-    camino_testigo    : lista de nodos (raíz → aceptador) en orden, o [] si no acepta.
-    """
     estado_resultado: str
     motivo: str
     cadena: str
@@ -93,33 +33,10 @@ class ResultadoSimulacion:
     camino_testigo: list = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Funciones internas del motor BFS
-# ---------------------------------------------------------------------------
-
+# Cada nodo conserva su padre y sus ancestros para reconstruir el camino y
+# reconocer una configuración repetida dentro de esa misma rama.
 def _crear_nodo(nodo_id, id_padre, id_rama, profundidad,
                 estado, posicion, pila, transicion, ancestros):
-    """
-    Crea un diccionario que representa un nodo de exploración BFS.
-
-    Parámetros
-    ----------
-    nodo_id    : int              Identificador único (0 = raíz).
-    id_padre   : int | None       id del nodo que lo generó; None para raíz.
-    id_rama    : int              id del primer nodo de la bifurcación actual.
-    profundidad: int              Nivel en el árbol BFS (0 = raíz).
-    estado     : str              Estado del AP en esta configuración.
-    posicion   : int              Índice en la cadena (0 = inicio, len = agotada).
-    pila       : tuple            Tupla de tokens; tope en índice 0. Inmutable.
-    transicion : str | None       Descripción de la transición aplicada; None en raíz.
-    ancestros  : frozenset        Configuraciones (estado, posicion, pila) de todos
-                                  los antecesores en este camino. Permite detectar ciclos
-                                  exactos dentro del mismo camino sin visitar globales.
-
-    Retorna
-    -------
-    dict con los campos descritos.
-    """
     return {
         "id": nodo_id,
         "id_padre": id_padre,
@@ -132,22 +49,8 @@ def _crear_nodo(nodo_id, id_padre, id_rama, profundidad,
         "ancestros": ancestros,
     }
 
-
+# Seguimos los padres desde el nodo aceptador y luego invertimos el recorrido.
 def _reconstruir_testigo(nodo_aceptador, nodos_por_id):
-    """
-    Reconstruye el camino desde la raíz hasta el nodo aceptador.
-
-    Sigue la cadena de `id_padre` hacia atrás y luego invierte el resultado.
-
-    Parámetros
-    ----------
-    nodo_aceptador : dict          El nodo que cumplió la condición de aceptación.
-    nodos_por_id   : dict[int, dict]  Mapa de id → nodo para todos los nodos admitidos.
-
-    Retorna
-    -------
-    list[dict]  Lista de nodos en orden raíz → aceptador.
-    """
     camino = []
     nodo_actual = nodo_aceptador
     while nodo_actual is not None:
@@ -157,15 +60,8 @@ def _reconstruir_testigo(nodo_aceptador, nodos_por_id):
     camino.reverse()
     return camino
 
-
+# Convertimos la transición al texto que después utiliza la tabla del testigo.
 def _texto_transicion(entrada, tope, destino, reemplazo):
-    """
-    Produce una descripción legible de la transición aplicada para los eventos.
-
-    Ejemplos:
-        "(a, Z0) → (q1, A;Z0)"
-        "(EPS, A) → (q1, EPS)"
-    """
     if reemplazo:
         texto_remp = ";".join(reemplazo)
     else:
@@ -173,49 +69,10 @@ def _texto_transicion(entrada, tope, destino, reemplazo):
     return "({}, {}) -> ({}, {})".format(entrada, tope, destino, texto_remp)
 
 
-# ---------------------------------------------------------------------------
-# Función pública principal
-# ---------------------------------------------------------------------------
-
+# Evalúa la cadena con BFS y devuelve un ResultadoSimulacion.
+# El límite cuenta configuraciones admitidas e incluye el nodo inicial.
 def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
-    """
-    Evalúa si el AP acepta la cadena usando exploración BFS (búsqueda por niveles).
-
-    Pre-condiciones — si alguna falla, retorna ENTRADA_INVALIDA sin explorar:
-      1. ap.es_valido debe ser True (el AP pasó por ValidadorAP.validar).
-      2. Todos los símbolos de la cadena deben pertenecer a ap.alfabeto,
-         o la cadena debe ser vacía.
-      3. limite debe ser un entero positivo (> 0).
-
-    Parámetros
-    ----------
-    ap            : AutomataPila   Autómata validado.
-    cadena        : str            Cadena a evaluar (puede ser vacía).
-    limite        : int            Número máximo de nodos a admitir en la cola.
-                                   Incluye el nodo raíz (la raíz ya cuenta como 1).
-    mostrar_traza : bool           No usado en la lógica central; se conserva
-                                   para compatibilidad con evaluar_y_mostrar.
-
-    Retorna
-    -------
-    ResultadoSimulacion con estado_resultado en {ACEPTADA, RECHAZADA,
-    DETENIDA_POR_LIMITE, ENTRADA_INVALIDA}.
-
-    Algoritmo BFS resumido:
-      1. Crear nodo raíz con configuración inicial (q0, 0, (Z0,)).
-      2. Encolarlo; admitidas = 1.
-      3. Mientras la cola no esté vacía:
-         a. Desencolar; procesadas += 1.
-         b. Comprobar aceptación (posicion == len(cadena) y estado ∈ F).
-         c. Si pila vacía: rama muerta (sin tope para ninguna transición).
-         d. Recopilar alternativas EPS y de consumo.
-         e. Por cada alternativa: calcular config_nueva; detectar ciclo en
-            ancestros del nodo; si hay presupuesto, admitir hijo; si no, podar.
-      4. Sin aceptación: DETENIDA_POR_LIMITE o RECHAZADA según hubo_poda.
-    """
-    # ------------------------------------------------------------------
-    # Pre-condición 1: AP validado
-    # ------------------------------------------------------------------
+    # Sin la marca de validación no iniciamos la exploración.
     if not ap.es_valido:
         return ResultadoSimulacion(
             estado_resultado=ENTRADA_INVALIDA,
@@ -228,10 +85,7 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
             limite_usado=limite,
         )
 
-    # ------------------------------------------------------------------
-    # Pre-condición 2: todos los símbolos en Σ
-    # (cadena vacía siempre es válida)
-    # ------------------------------------------------------------------
+    # La cadena vacía es válida; cualquier otro símbolo debe pertenecer a Σ.
     simbolos_invalidos = [s for s in cadena if s not in ap.alfabeto]
     if simbolos_invalidos:
         invalidos_unicos = sorted(set(simbolos_invalidos))
@@ -246,9 +100,7 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
             limite_usado=limite,
         )
 
-    # ------------------------------------------------------------------
-    # Pre-condición 3: límite entero positivo
-    # ------------------------------------------------------------------
+    # El presupuesto debe ser un entero positivo y los booleanos no cuentan.
     if not isinstance(limite, int) or isinstance(limite, bool) or limite <= 0:
         return ResultadoSimulacion(
             estado_resultado=ENTRADA_INVALIDA,
@@ -261,12 +113,9 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
             limite_usado=limite,
         )
 
-    # ------------------------------------------------------------------
-    # Inicialización del BFS
-    # ------------------------------------------------------------------
     longitud = len(cadena)
 
-    # Nodo raíz: configuración inicial del AP.
+    # La raíz representa el estado inicial, la posición cero y la pila con Z0.
     nodo_raiz = _crear_nodo(
         nodo_id=0,
         id_padre=None,
@@ -281,25 +130,23 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
 
     cola = collections.deque([nodo_raiz])
 
-    # Mapa de id → nodo para reconstruir el testigo sin copiar ramas.
+    # Relacionamos cada identificador con su nodo para reconstruir el testigo.
     nodos_por_id = {0: nodo_raiz}
 
-    # Contador de id único para nodos generados.
+    # El siguiente contador asigna un identificador distinto a cada nodo.
     siguiente_id = 1
 
-    # Contadores de exploración.
+    # Estos contadores permiten explicar cuánto trabajo realizó la exploración.
     admitidas = 1      # La raíz ya fue admitida al encolarse.
     procesadas = 0
     generadas = 0
     podadas_limite = 0
     hubo_poda = False  # True si se omitió al menos un nodo por presupuesto.
 
-    # Lista de eventos para trazas y diagnósticos.
+    # Guardamos los eventos que después se muestran en la traza y el diagnóstico.
     pasos = []
 
-    # ------------------------------------------------------------------
-    # Bucle principal BFS
-    # ------------------------------------------------------------------
+    # Procesamos las configuraciones por niveles hasta aceptar o vaciar la cola.
     while cola:
         nodo = cola.popleft()
         procesadas += 1
@@ -308,11 +155,7 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
         posicion = nodo["posicion"]
         pila     = nodo["pila"]
 
-        # ------------------------------------------------------------------
-        # Comprobar ACEPTACIÓN antes que cualquier otra cosa.
-        # (D05) Acepta si la entrada fue completamente consumida y el estado
-        # pertenece a F, independientemente del contenido de la pila.
-        # ------------------------------------------------------------------
+        # Comprobamos primero la aceptación porque no depende del contenido de la pila.
         if posicion == longitud and estado in ap.estados_finales:
             testigo = _reconstruir_testigo(nodo, nodos_por_id)
             pasos.append({
@@ -336,12 +179,7 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
                 camino_testigo=testigo,
             )
 
-        # ------------------------------------------------------------------
-        # Pila vacía → no hay tope; ninguna transición puede aplicarse.
-        # Si ya comprobamos aceptación y no aceptó, esta rama muere aquí.
-        # Nota: el criterio de aceptación (D05) no exige pila vacía;
-        # pila vacía con entrada pendiente o estado no final es rama muerta.
-        # ------------------------------------------------------------------
+        # Sin tope no se puede aplicar otra transición; si no aceptó, la rama termina.
         if not pila:
             pasos.append({
                 "tipo": "rama_muerta_pila_vacia",
@@ -353,18 +191,14 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
 
         tope = pila[0]
 
-        # ------------------------------------------------------------------
-        # Recopilar alternativas aplicables.
-        # Orden: EPS primero (transiciones espontáneas), luego consumo.
-        # Dentro de cada grupo se respeta el orden de declaración del modelo.
-        # ------------------------------------------------------------------
+        # Revisamos primero EPS y luego consumo, respetando el orden declarado.
         alternativas = []
 
-        # Transiciones espontáneas (EPS no avanza la posición).
+        # Agregamos primero las transiciones EPS, que no avanzan la posición.
         for destino, reemplazo in ap.obtener_alternativas(estado, EPS, tope):
             alternativas.append((EPS, destino, reemplazo))
 
-        # Transiciones de consumo (solo si queda entrada).
+        # Si queda entrada, agregamos después las transiciones que la consumen.
         if posicion < longitud:
             simbolo = cadena[posicion]
             for destino, reemplazo in ap.obtener_alternativas(estado, simbolo, tope):
@@ -381,36 +215,23 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
             })
             continue
 
-        # ------------------------------------------------------------------
-        # Expandir cada alternativa.
-        # ------------------------------------------------------------------
         for entrada, destino, reemplazo in alternativas:
             generadas += 1
 
-            # Calcular nueva posición.
-            # EPS no avanza: la transición espontánea no consume símbolo.
+            # La posición solo avanza cuando la transición consume un símbolo.
             if entrada == EPS:
                 nueva_posicion = posicion
             else:
                 nueva_posicion = posicion + 1
 
-            # Calcular nueva pila.
-            # El reemplazo se inserta en lugar del tope; la convención es
-            # tope en índice 0, así que el primer token del reemplazo queda
-            # en la cima. Reemplazo () (EPS) desapila sin insertar nada.
+            # El reemplazo se inserta en lugar del tope. Como el índice 0 es
+            # la cima, su primer token queda arriba; () representa desapilar.
             nueva_pila = reemplazo + pila[1:]
 
             config_nueva = (destino, nueva_posicion, nueva_pila)
 
-            # ----------------------------------------------------------
-            # Detección de ciclo dentro del camino.
-            # Si la nueva configuración ya es ancestro de este nodo,
-            # el camino cerraría un ciclo exacto: el mismo estado,
-            # misma posición y MISMA PILA COMPLETA ya fueron visitados
-            # en el mismo camino. No hay nueva información que explorar.
-            # IMPORTANTE: misma pareja (estado, posición) con pila
-            # DIFERENTE no es ciclo; puede ser una ejecución distinta.
-            # ----------------------------------------------------------
+            # Solo cerramos un ciclo si coinciden estado, posición y pila completa.
+            # La misma posición con otra pila todavía representa otra ejecución.
             if config_nueva in nodo["ancestros"]:
                 pasos.append({
                     "tipo": "ciclo_detectado",
@@ -420,19 +241,13 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
                 })
                 continue
 
-            # ----------------------------------------------------------
-            # Aplicar presupuesto: admitir solo si hay cupo.
-            # El presupuesto se aplica AL ADMITIR, no al desencolar,
-            # para que la cola nunca exceda `limite` nodos.
-            # Las configuraciones ya admitidas siguen procesándose aunque
-            # el límite se haya alcanzado; pueden contener aceptación.
-            # ----------------------------------------------------------
+            # Limitamos al admitir para acotar la frontera. Los nodos que ya
+            # entraron en la cola se procesan porque todavía pueden aceptar.
             if admitidas < limite:
                 id_hijo = siguiente_id
                 siguiente_id += 1
 
-                # Determinar id_rama: si hay más de una alternativa
-                # en este nivel, cada hijo recibe su propio id de rama.
+                # Cuando hay varias alternativas, cada hija recibe una rama propia.
                 if len(alternativas) > 1:
                     id_rama_hijo = id_hijo
                 else:
@@ -492,12 +307,8 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
                     "limite": limite,
                 })
 
-    # ------------------------------------------------------------------
-    # Cola vacía sin haber encontrado aceptación.
-    # Si hubo poda por recursos: DETENIDA_POR_LIMITE.
-    #   No podemos garantizar rechazo porque existían alternativas no exploradas.
-    # Si no hubo poda: se exploró el espacio completo; RECHAZADA.
-    # ------------------------------------------------------------------
+    # Una poda por presupuesto deja el resultado inconcluso; sin podas, el
+    # agotamiento de todas las ramas sí permite responder RECHAZADA.
     if hubo_poda:
         motivo = (
             "Presupuesto de {} configuraciones agotado; "
@@ -528,26 +339,8 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
         )
 
 
-# ---------------------------------------------------------------------------
-# Presentación de trazas
-# ---------------------------------------------------------------------------
-
+# Muestra el resumen y, cuando existe, el camino que demuestra la aceptación.
 def mostrar_traza(resultado, ap):
-    """
-    Imprime la traza de la evaluación en la consola.
-
-    Si el resultado es ACEPTADA: muestra el camino testigo paso a paso
-    en formato tabular. Si la traza supera 50 pasos, se muestran los
-    primeros 25 y los últimos 10 con aviso explícito.
-
-    Si el resultado es RECHAZADA o DETENIDA_POR_LIMITE: muestra únicamente
-    los contadores; no hay camino testigo que mostrar.
-
-    Parámetros
-    ----------
-    resultado : ResultadoSimulacion  Producido por evaluar().
-    ap        : AutomataPila         El autómata evaluado (para contexto).
-    """
     print()
     print("=" * 62)
     print("RESULTADO DE SIMULACIÓN — {}".format(ap.nombre))
@@ -576,24 +369,12 @@ def mostrar_traza(resultado, ap):
 
     print("=" * 62)
 
-
+# La tabla conserva el estado y la pila antes y después de cada transición.
+# Si el testigo es muy largo, muestra el inicio y el final con un aviso.
 def _imprimir_tabla_testigo(camino, cadena):
-    """
-    Imprime el camino testigo en formato tabular.
-
-    Columnas: Paso | Rama | Estado | Entrada restante | Pila antes |
-              Consumido | Tope | Destino | Reemplazo | Pila después.
-
-    Acorta la salida a 25+10 pasos si supera 50, anunciándolo.
-
-    Parámetros
-    ----------
-    camino : list[dict]   Lista de nodos raíz → aceptador.
-    cadena : str          Cadena evaluada (para calcular entrada restante).
-    """
     total = len(camino)
 
-    # Decidir qué pasos mostrar.
+    # Seleccionamos todos los pasos o un resumen de los extremos si la traza es larga.
     if total > 50:
         print(
             "[AVISO] El camino testigo tiene {} pasos. "
@@ -605,16 +386,15 @@ def _imprimir_tabla_testigo(camino, cadena):
         pasos_mostrar = list(range(total))
         truncado = False
 
-    # Encabezados de la tabla.
+    # Definimos las columnas que explican cada cambio de configuración.
     encabezados = [
         "Paso", "Rama", "Estado", "Entrada restante",
         "Pila antes", "Consumido", "Tope", "Destino", "Reemplazo", "Pila después",
     ]
 
-    # Construir filas de datos.
-    # Cada fila muestra: el estado ANTES de la transición (el nodo padre),
-    # la transición aplicada, y el estado DESPUÉS (el nodo actual).
-    # Para el nodo raíz (sin transición): mostrar solo la configuración inicial.
+    # Construimos las filas a partir del nodo inicial y las transiciones del testigo.
+    # Cada fila parte del nodo padre, muestra la transición y termina en el nodo
+    # actual. En la raíz solo mostramos la configuración inicial.
     filas = []
     for paso_idx, i in enumerate(pasos_mostrar):
         nodo = camino[i]
@@ -662,44 +442,31 @@ def _imprimir_tabla_testigo(camino, cadena):
         if truncado and paso_idx == 24:
             filas.append(["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."])
 
-    # Calcular anchos de columna.
+    # Calculamos cada ancho con el contenido real para no recortar información.
     anchos = [len(enc) for enc in encabezados]
     for fila in filas:
         for j, celda in enumerate(fila):
             if len(celda) > anchos[j]:
                 anchos[j] = len(celda)
 
-    # Imprimir encabezado.
+    # Imprimimos primero el encabezado de la tabla.
     sep = " | "
     linea_enc = sep.join(enc.ljust(anchos[k]) for k, enc in enumerate(encabezados))
     print(linea_enc)
     print("-" * len(linea_enc))
 
-    # Imprimir filas.
+    # Finalmente imprimimos cada configuración seleccionada.
     for fila in filas:
         print(sep.join(celda.ljust(anchos[k]) for k, celda in enumerate(fila)))
 
-
+# Convierte la tupla de pila a texto con el tope del lado izquierdo.
 def _pila_a_texto(pila):
-    """
-    Convierte una tupla de pila a texto legible.
-
-    ()            → 'vacía'
-    ('Z0',)       → '[Z0]'
-    ('A','Z0')    → '[A,Z0]'
-    """
     if not pila:
         return "vacía"
     return "[" + ",".join(pila) + "]"
 
-
+# Recupera los tres datos que necesita la tabla desde el texto de transición.
 def _parsear_trans_desc(descripcion):
-    """
-    Extrae (consumido, destino, reemplazo) desde la descripción de transición.
-
-    Formato esperado: "(entrada, tope) -> (destino, reemplazo)"
-    Ejemplo: "(a, Z0) -> (q0, A;Z0)"
-    """
     try:
         # Partir por " -> "
         partes = descripcion.split(" -> ")
@@ -713,27 +480,8 @@ def _parsear_trans_desc(descripcion):
         return "?", "?", "?"
 
 
-# ---------------------------------------------------------------------------
-# Función de conveniencia para integración con main.py
-# ---------------------------------------------------------------------------
-
+# Evalúa y muestra el resultado en una sola llamada para simplificar el menú.
 def evaluar_y_mostrar(ap, cadena, limite=10000):
-    """
-    Evalúa la cadena y muestra la traza a continuación.
-
-    Simplifica la integración con main.py: una sola llamada produce el
-    resultado y lo presenta sin que el llamador deba gestionar mostrar_traza.
-
-    Parámetros
-    ----------
-    ap     : AutomataPila   Autómata validado.
-    cadena : str            Cadena a evaluar.
-    limite : int            Presupuesto de configuraciones admitidas.
-
-    Retorna
-    -------
-    ResultadoSimulacion  — el mismo objeto que retorna evaluar().
-    """
     resultado = evaluar(ap, cadena, limite=limite, mostrar_traza=False)
     mostrar_traza(resultado, ap)
     return resultado

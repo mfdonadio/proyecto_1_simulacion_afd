@@ -1,59 +1,19 @@
-"""
-ValidadorAP.py — Validación estructural y de determinismo de un Autómata de Pila.
-
-Comprueba la séptupla M = (Q, Σ, Γ, δ, q0, Z0, F) y, si el tipo es APD,
-verifica que no haya conflictos de determinismo.
-
-Contrato público
-----------------
-  validar(ap) -> (bool, list[str])
-      True y lista vacía si el AP es estructuralmente válido.
-      False y lista de mensajes de error si hay algún problema.
-      Actualiza ap.es_valido según el resultado.
-
-Por qué NO se importa ValidadorAFD
------------------------------------
-Las reglas de AP son distintas de las de AFD/AFND en varios puntos clave:
-  - EPS es un valor válido como símbolo de entrada de una transición.
-  - Los símbolos de pila (Γ) admiten tokens de varios caracteres, como "Z0".
-  - δ no necesita ser total; ausencia de transición es semánticamente válida.
-  - F puede ser vacío.
-  - El determinismo APD incluye prohibir EPS+consumo para el mismo (q, X).
-Mezclar los validadores produciría falsos rechazos.
-"""
+# Este validador revisa la séptupla del AP y, cuando es APD, también comprueba
+# que sus transiciones sean deterministas. Devuelve el resultado junto con todos
+# los errores encontrados y actualiza ap.es_valido.
+# Las reglas no se comparten con AFD y AFND: un AP admite transiciones EPS,
+# símbolos de pila de varios caracteres, una función parcial y un F vacío.
 
 from AutomataPila import EPS
 
 
 def validar(ap):
-    """
-    Verifica la corrección estructural de un AutomataPila.
-
-    Orden de comprobaciones (R04, R05):
-      1. ap.tipo ∈ {"APD", "APND"}.
-      2. q0 ∈ Q.
-      3. F ⊆ Q.
-      4. Z0 ∈ Γ.
-      5. EPS no aparece en Σ ni en Γ.
-      6. Para cada transición: origen/destino ∈ Q, entrada ∈ Σ ∪ {EPS},
-         tope ∈ Γ, cada token del reemplazo ∈ Γ.
-      7. Si tipo == "APD": comprobar determinismo.
-
-    Parámetros
-    ----------
-    ap : AutomataPila
-
-    Retorna
-    -------
-    (bool, list[str])
-        True, []                  — AP válido; ap.es_valido se pone en True.
-        False, [mensajes...]      — AP inválido; ap.es_valido se pone en False.
-    """
+    # Revisamos primero los componentes de la séptupla y después cada transición.
+    # Al terminar devolvemos (True, []) o (False, errores) y dejamos es_valido
+    # sincronizado con ese resultado.
     errores = []
 
-    # ------------------------------------------------------------------
-    # 1. Tipo reconocido
-    # ------------------------------------------------------------------
+    # Sin un tipo APD o APND no podemos aplicar las reglas correspondientes.
     if ap.tipo not in ("APD", "APND"):
         errores.append(
             "TIPO '{}' no reconocido; debe ser APD o APND.".format(ap.tipo)
@@ -62,26 +22,20 @@ def validar(ap):
         ap.es_valido = False
         return False, errores
 
-    # ------------------------------------------------------------------
-    # 2. Estado inicial ∈ Q
-    # ------------------------------------------------------------------
+    # Comprobamos que el estado inicial pertenezca a Q.
     if ap.estado_inicial not in ap.estados:
         errores.append(
             "El estado inicial '{}' no pertenece a Q.".format(ap.estado_inicial)
         )
 
-    # ------------------------------------------------------------------
-    # 3. Estados finales ⊆ Q
-    # ------------------------------------------------------------------
+    # Todos los estados finales deben formar un subconjunto de Q.
     ajenos_f = ap.estados_finales - ap.estados
     if ajenos_f:
         errores.append(
             "Estados finales ajenos a Q: {}.".format(sorted(ajenos_f))
         )
 
-    # ------------------------------------------------------------------
-    # 4. Símbolo inicial de pila ∈ Γ
-    # ------------------------------------------------------------------
+    # El símbolo con el que inicia la pila debe pertenecer a Γ.
     if ap.simbolo_inicial_pila not in ap.alfabeto_pila:
         errores.append(
             "El símbolo inicial de pila '{}' no pertenece a Γ.".format(
@@ -89,9 +43,7 @@ def validar(ap):
             )
         )
 
-    # ------------------------------------------------------------------
-    # 5. EPS no puede estar en Σ ni en Γ (R04.3)
-    # ------------------------------------------------------------------
+    # EPS se reserva para las transiciones y no puede formar parte de Σ ni de Γ.
     if EPS in ap.alfabeto:
         errores.append(
             "'{}' está reservado y no puede aparecer en Σ.".format(EPS)
@@ -101,19 +53,17 @@ def validar(ap):
             "'{}' está reservado y no puede aparecer en Γ.".format(EPS)
         )
 
-    # ------------------------------------------------------------------
-    # 6. Validación de cada transición
-    # ------------------------------------------------------------------
+    # Ahora validamos el origen, la entrada, el tope y cada alternativa de δ.
     for (origen, entrada, tope), alternativas in ap.transiciones.items():
         prefijo = "Transición ({}, {}, {}):".format(origen, entrada, tope)
 
-        # Origen ∈ Q
+        # El estado de origen debe pertenecer a Q.
         if origen not in ap.estados:
             errores.append(
                 "{} estado origen '{}' no pertenece a Q.".format(prefijo, origen)
             )
 
-        # Entrada ∈ Σ ∪ {EPS}
+        # La entrada debe ser un símbolo de Σ o EPS.
         if entrada != EPS and entrada not in ap.alfabeto:
             errores.append(
                 "{} símbolo de entrada '{}' no pertenece a Σ ni es EPS.".format(
@@ -121,7 +71,7 @@ def validar(ap):
                 )
             )
 
-        # Tope ∈ Γ; nunca EPS
+        # El tope debe pertenecer a Γ y nunca puede ser EPS.
         if tope == EPS:
             errores.append(
                 "{} el tope de pila no puede ser EPS.".format(prefijo)
@@ -131,7 +81,7 @@ def validar(ap):
                 "{} tope de pila '{}' no pertenece a Γ.".format(prefijo, tope)
             )
 
-        # Cada alternativa: destino ∈ Q; tokens del reemplazo ∈ Γ
+        # En cada alternativa, el destino pertenece a Q y el reemplazo usa Γ.
         for destino, reemplazo in alternativas:
             if destino not in ap.estados:
                 errores.append(
@@ -147,14 +97,10 @@ def validar(ap):
                         )
                     )
 
-    # ------------------------------------------------------------------
-    # 7. Determinismo APD (R05)
-    #    Regla A: cada clave (q, a, X) tiene como máximo una alternativa.
-    #    Regla B: si existe δ(q, EPS, X), no puede existir δ(q, a, X)
-    #             para ningún a ∈ Σ (independiente de si está en la cadena).
-    # ------------------------------------------------------------------
+    # En un APD cada clave puede tener una sola alternativa. Además, si existe
+    # δ(q, EPS, X), no puede coexistir δ(q, a, X) para ningún símbolo de Σ.
     if ap.tipo == "APD":
-        # Regla A — más de una alternativa distinta para la misma clave.
+        # Primero rechazamos las claves que tengan más de una alternativa distinta.
         for clave, alternativas in ap.transiciones.items():
             if len(alternativas) > 1:
                 origen, entrada, tope = clave
@@ -165,8 +111,8 @@ def validar(ap):
                     )
                 )
 
-        # Regla B — construir el conjunto de parejas (q, X) con transición EPS.
-        # Luego buscar si existe alguna transición (q, a, X) con a ∈ Σ.
+        # Después reunimos las parejas (q, X) con transición EPS y comprobamos
+        # que ninguna de ellas tenga también una transición que consuma entrada.
         parejas_con_eps = set()
         for (origen, entrada, tope) in ap.transiciones:
             if entrada == EPS:
@@ -181,9 +127,7 @@ def validar(ap):
                     )
                 )
 
-    # ------------------------------------------------------------------
-    # Resultado final
-    # ------------------------------------------------------------------
+    # El indicador es_valido siempre refleja el resultado de esta revisión.
     if errores:
         ap.es_valido = False
         return False, errores

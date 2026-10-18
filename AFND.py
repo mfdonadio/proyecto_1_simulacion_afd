@@ -1,17 +1,8 @@
-"""
-Clase AFND que representa formalmente un Autómata Finito NO Determinista.
-Un AFND es una tupla (Q, Σ, δ, q0, F) donde:
-    Q: conjunto de estados
-    Σ: alfabeto (símbolos válidos)
-    δ: función de transición (diccionario)
-    q0: estado inicial
-    F: conjunto de estados finales (aceptación)
-"""
+# El AFND guarda sus estados, alfabeto, transiciones, estado inicial y estados finales.
 
 
 class AFND:
-    """Constructor que inicializa un Autómata Finito NO Determinista vacío."""
-
+    # Inicializamos un AFND vacío para llenarlo manualmente o desde un archivo.
     def __init__(afnd, nombre=""):
         # Identificador del autómata
         afnd.nombre = nombre
@@ -52,15 +43,7 @@ class AFND:
         simbolo,
         estados_destino
     ):
-        """
-        Agrega o une un conjunto de destinos para una pareja de transición.
-
-        Parámetros:
-            estado_origen: estado desde el cual inicia la transición
-            simbolo: símbolo que permite realizar la transición
-            estados_destino: conjunto de posibles estados de llegada
-        """
-
+        # Unimos los nuevos destinos con los que ya tiene esta pareja de transición.
         # Rechazamos otros tipos antes de modificar las transiciones.
         if not isinstance(estados_destino, set):
             raise TypeError("Los estados destino deben ser un conjunto.")
@@ -87,11 +70,7 @@ class AFND:
     # Creamos una función especializada para obtener el conjunto de destinos
     # de una tupla (estado, símbolo) en el diccionario de transiciones δ
     def obtener_destinos(afnd, estado_origen, simbolo):
-        """
-        Retorna una copia del conjunto de destinos.
-        Si la transición no fue definida, retorna el conjunto vacío ∅.
-        """
-
+        # Devolvemos una copia de los destinos o un conjunto vacío si no existen.
         # get busca la transición. Si no existe, utiliza un conjunto vacío
         destinos = afnd.transiciones.get(
             (estado_origen, simbolo),
@@ -104,19 +83,7 @@ class AFND:
 
     # Mostramos la definición formal completa del AFND
     def mostrar_definicion_formal(afnd):
-        """
-        Muestra la definición formal del AFND usando la notación matemática:
-
-        AFND = (Q, Σ, δ, q0, F)
-
-        Donde:
-            Q: conjunto de estados
-            Σ: alfabeto
-            δ: función de transición
-            q0: estado inicial
-            F: conjunto de estados finales
-        """
-
+        # Mostramos los cinco componentes del AFND y sus posibles destinos.
         print("\n--- DEFINICIÓN FORMAL DEL AFND ---")
         print("Nombre:", afnd.nombre)
         print("Q =", afnd._formatear_conjunto(afnd.estados))
@@ -149,16 +116,7 @@ class AFND:
                 )
 
     def mostrar_tabla_transicion(afnd):
-        """
-        Muestra la tabla de transiciones en formato tabular.
-
-        Cada fila representa un estado y cada columna representa
-        un símbolo del alfabeto.
-
-        Las celdas muestran los destinos como conjuntos,
-        incluso cuando solamente contienen un estado.
-        """
-
+        # Organizamos los estados en filas y mostramos cada destino como un conjunto.
         # Necesitamos al menos un estado y un símbolo
         # para poder construir la tabla
         if not afnd.estados or not afnd.alfabeto:
@@ -245,13 +203,7 @@ class AFND:
     # Formato utilizado para mostrar conjuntos
     @staticmethod
     def _formatear_conjunto(elementos):
-        """
-        Devuelve ∅ si el conjunto está vacío.
-
-        Si contiene elementos, los ordena y los muestra
-        separados por comas dentro de llaves.
-        """
-
+        # Usamos ∅ para el conjunto vacío y llaves para los demás conjuntos.
         # Si no existen elementos, representamos el conjunto vacío
         if not elementos:
             return "∅"

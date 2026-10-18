@@ -1,14 +1,6 @@
-"""
-Clase AFD que representa formalmente un Autómata Finito Determinista.
-Un AFD es una tupla (Q, Σ, δ, q0, F) donde:
-    Q: conjunto de estados
-    Σ: alfabeto (símbolos válidos)
-    δ: función de transición (diccionario)
-    q0: estado inicial
-    F: conjunto de estados finales (aceptación)
-"""
+# El AFD guarda sus estados, alfabeto, transiciones, estado inicial y estados finales.
 class AFD:
-    """Constructor que inicializa un Autómata Finito Determinista vacío."""
+    # Inicializamos un AFD vacío para llenarlo manualmente o desde un archivo.
     def __init__(afd, nombre=""):
         # Identificador del autómata
         afd.nombre = nombre
@@ -42,20 +34,7 @@ class AFD:
         afd.historial = []
 
     def agregar_transicion(afd, estado_origen, simbolo, estado_destino):
-        """
-        Agrega una transición a la función δ del AFD.
-        En un AFD determinista, cada pareja (estado, símbolo) debe tener EXACTAMENTE
-        una transición. Si detectamos una duplicada, la registramos como anomalía.
-        
-        Parámetros:
-            estado_origen: Estado desde el cual partimos
-            simbolo: Símbolo del alfabeto que leemos
-            estado_destino: Estado al cual se va después de leer el símbolo
-        
-        Retorna:
-            True si la transición se agregó correctamente
-            False si ya existía una transición para ese (estado, símbolo)
-        """
+        # Agregamos una transición y registramos cualquier pareja repetida para validarla.
         # Comprobamos los tipos antes de usar la pareja como clave.
         if any(not isinstance(valor, str) for valor in (estado_origen, simbolo, estado_destino)):
             raise TypeError("El origen, símbolo y destino de un AFD deben ser texto.")
@@ -63,7 +42,7 @@ class AFD:
         # Creamos una tupla (estado, símbolo) como clave del diccionario
         clave = (estado_origen, simbolo)
 
-        #Cualquier modificacion en δ invalida una validacion anterior
+        # Si cambia δ, la validación anterior deja de representar al autómata.
         afd.es_valido = False
         
         # Verificamos si ya existe una transición para esta pareja
@@ -77,17 +56,7 @@ class AFD:
         return True
 
     def mostrar_definicion_formal(afd):
-        """
-        Muestra la definición formal del AFD usando la notación matemática:
-        AFD = (Q, Σ, δ, q0, F)
-        
-        Donde:
-            Q: Conjunto de estados
-            Σ: Alfabeto (símbolos válidos)
-            δ: Función de transición
-            q0: Estado inicial
-            F: Conjunto de estados finales
-        """
+        # Mostramos los cinco componentes del AFD y su función de transición.
         print("\n--- DEFINICION FORMAL DEL AFD ---")
         print("Nombre: " , afd.nombre)
         print("Q =", afd.estados)
@@ -102,11 +71,7 @@ class AFD:
             print("  δ(" + estado_origen + ", " + simbolo + ") = " + destino)
 
     def mostrar_tabla_transicion(afd):
-        """
-        Muestra la tabla de transiciones en formato tabular.
-        Cada fila representa un estado, cada columna un símbolo del alfabeto.
-        Las celdas contienen el estado destino para esa transición.
-        """
+        # Organizamos cada estado en una fila y cada símbolo en una columna.
         # Validación: necesitamos al menos un estado y un símbolo para mostrar algo útil
         if not afd.estados or not afd.alfabeto:
             print("\nNo hay datos suficientes para mostrar la tabla de transicion.")

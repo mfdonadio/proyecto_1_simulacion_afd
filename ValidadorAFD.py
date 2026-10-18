@@ -1,14 +1,5 @@
 class ValidadorAFD:
-    """
-    Valida que un AFD cumpla con la definición formal.
-    Un AFD válido debe cumplir:
-    1. Tener todos sus componentes definidos (Q, Σ, δ, q0, F)
-    2. q0 ∈ Q (estado inicial en Q)
-    3. F ⊆ Q (estados finales en Q)
-    4. Para cada transición: origen ∈ Q, símbolo ∈ Σ, destino ∈ Q
-    5. Ser determinista: una sola transición por (estado, símbolo)
-    6. Ser completo: una transición para cada (estado, símbolo) posible
-    """
+    # Comprobamos que cada componente del AFD cumpla su definición formal.
 
     _SIMBOLOS_EPSILON = {
         "",
@@ -22,7 +13,7 @@ class ValidadorAFD:
 
     @staticmethod
     def validar_nombre_estado(estado):
-        """Comparte la regla de nombres entre ambos cargadores y validadores."""
+        # Usamos la misma regla para los nombres en cargadores y validadores.
         if not isinstance(estado, str) or not estado:
             return "El nombre de un estado debe ser texto no vacío."
         # Estos textos ya tienen un significado en el formato de destinos.
@@ -34,18 +25,12 @@ class ValidadorAFD:
 
     @staticmethod
     def es_simbolo_epsilon(simbolo):
-        """
-        Determina si un valor representa la cadena vacía o una
-        transición epsilon, la cual no está permitida en un AFD.
-        """
+        # Reconocemos las formas de escribir epsilon, que no se permite en un AFD.
         return isinstance(simbolo, str) and simbolo.strip().lower() in ValidadorAFD._SIMBOLOS_EPSILON
 
     @staticmethod
     def obtener_transiciones_faltantes(afd):
-        """
-        Retorna todas las parejas (estado, símbolo) para las cuales
-        la función de transición no está definida.
-        """
+        # Buscamos las parejas de estado y símbolo que no tienen una transición.
         faltantes = []
 
         # Solo buscamos parejas cuando sus componentes tienen tipos válidos.
@@ -67,12 +52,7 @@ class ValidadorAFD:
     
     @staticmethod
     def validar(afd):
-        """
-        Realiza validación estructural completa del AFD.
-        
-        Retorna:
-            Tupla (booleano_validez, lista_de_errores)
-        """
+        # Revisamos toda la estructura y devolvemos su validez junto con los errores.
         errores = []
         afd.es_valido = False
 
@@ -92,7 +72,7 @@ class ValidadorAFD:
         if errores:
             return False, errores
         
-        # ========== VALIDACIONES BÁSICAS DE COMPONENTES ==========
+        # Los componentes básicos deben existir y usar valores permitidos.
         # Un AFD debe tener un identificador
         if not isinstance(afd.nombre, str) or afd.nombre.strip() == "":
             errores.append("El automata no tiene un nombre definido o un identificador.")
@@ -109,7 +89,7 @@ class ValidadorAFD:
         if len(afd.alfabeto) == 0:
             errores.append("El alfabeto Σ no puede estar vacío.")
 
-        # ========== VALIDAR SÍMBOLOS DEL ALFABETO ==========
+        # Cada símbolo del alfabeto debe ser un carácter distinto de epsilon.
         for simbolo in afd.alfabeto:
             if ValidadorAFD.es_simbolo_epsilon(simbolo):
                 errores.append(
@@ -124,20 +104,18 @@ class ValidadorAFD:
                     + "debe tener exactamente un carácter."
                 )
         
-        # ========== VALIDAR q0 (ESTADO INICIAL) ==========
-        # El estado inicial q0 debe pertenecer al conjunto Q
+        # El estado inicial q0 debe pertenecer al conjunto Q.
         if afd.estado_inicial not in afd.estados:
             errores.append("El estado inicial q0 no pertenece al conjunto de estados Q.")
         
-        # ========== VALIDAR F (ESTADOS FINALES) ==========
-        # Todos los estados finales deben pertenecer a Q
+        # Todos los estados finales F deben pertenecer al conjunto Q.
         for estado_final in afd.estados_finales:
             if estado_final not in afd.estados:
                 errores.append(
                     "El estado final " + estado_final + " no pertenece al conjunto Q."
                 )
         
-        # ========== VALIDAR TRANSICIONES ==========
+        # Revisamos que cada parte de una transición pertenezca al componente correcto.
         # Cada transición δ(q, a) = q' debe cumplir:
         # - q ∈ Q (origen en estados)
         # - a ∈ Σ (símbolo en alfabeto)
@@ -180,7 +158,7 @@ class ValidadorAFD:
                     "La transición apunta al estado destino inexistente " + estado_destino + "."
                 )
         
-        # ========== VALIDAR DETERMINISMO ==========
+        # Una pareja de estado y símbolo no puede llevar a destinos distintos.
         # Un AFD debe ser determinista: no puede haber dos transiciones
         # diferentes para la misma pareja (estado, símbolo)
         for repetida in afd.transiciones_repetidas:
@@ -208,7 +186,7 @@ class ValidadorAFD:
             else:
                 errores.append("No es determinista: destinos distintos para " + repr(clave) + ".")
         
-        # ========== VALIDAR COMPLETITUD ==========
+        # Un AFD completo necesita una transición para cada pareja posible.
         faltantes = ValidadorAFD.obtener_transiciones_faltantes(afd)
 
         for estado_origen, simbolo in faltantes:
@@ -220,27 +198,16 @@ class ValidadorAFD:
                 + ")."
             )
         
-        # ========== RESULTADO FINAL ==========
-        # AFD es válido si no hay errores
+        # El AFD solo queda marcado como válido cuando no encontramos errores.
         afd.es_valido = len(errores) == 0
         
         return afd.es_valido, errores
 
     @staticmethod
     def analizar_estructura(afd):
-        """
-        Analiza la estructura del AFD para detectar problemas de accesibilidad.
+        # Recorremos el AFD desde q0 para encontrar estados alcanzables e inaccesibles.
         
-        Calcula:
-        1. Estados alcanzables: aquellos a los que se puede llegar desde q0
-        2. Estados inaccesibles: aquellos que nunca se alcanzan (son código muerto)
-        3. Estados finales alcanzables: estados aceptadores realmente útiles
-        4. Lenguaje vacío: si no hay manera de aceptar ninguna cadena
-        
-        Usa búsqueda en profundidad (DFS) desde el estado inicial.
-        """
-        
-        # ========== ENCONTRAR ESTADOS ALCANZABLES ==========
+        # Usamos una búsqueda en profundidad para encontrar los estados alcanzables.
         # Usamos DFS (Depth-First Search) con una pila (lista)
         # para explorar todos los estados accesibles desde q0
         
@@ -269,8 +236,8 @@ class ValidadorAFD:
                 if siguiente is not None and siguiente not in estados_alcanzables:
                     pendientes.append(siguiente)
         
-        # ========== CALCULAR RESULTADOS ==========
-        # Estados inaccesibles: los que NO se pueden alcanzar desde q0
+        # Con el recorrido terminado, calculamos los resultados del análisis.
+        # Los estados inaccesibles son aquellos a los que no se puede llegar desde q0.
         inaccesibles = afd.estados - estados_alcanzables
         
         # Estados finales útiles: solo los que realmente se alcanzan
@@ -290,14 +257,7 @@ class ValidadorAFD:
 
     @staticmethod
     def completar_con_estado_trampa(afd, nombre_base="q_trampa"):
-        """
-        Completa las transiciones faltantes enviándolas a un nuevo
-        estado trampa. El estado trampa posee ciclos para todos los
-        símbolos del alfabeto.
-
-        Retorna:
-            Tupla (nombre_estado_trampa, cantidad_transiciones_completadas)
-        """
+        # Enviamos las transiciones faltantes a un estado trampa con ciclos propios.
         # No completamos una definición con otros errores ni creamos nombres inválidos.
         if ValidadorAFD.clasificar(afd) != "AFD INCOMPLETO":
             return None, 0
@@ -342,7 +302,7 @@ class ValidadorAFD:
 
     @staticmethod
     def clasificar(afd):
-        """Prioriza datos inválidos, no determinismo y después incompletitud."""
+        # Al clasificar, priorizamos datos inválidos, no determinismo e incompletitud.
 
         valido, errores = ValidadorAFD.validar(afd)
 

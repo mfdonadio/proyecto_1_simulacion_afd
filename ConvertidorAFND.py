@@ -1,7 +1,4 @@
-"""
-Conversión de un AFND a un AFD mediante el algoritmo
-de construcción de subconjuntos.
-"""
+# Convertimos un AFND a un AFD mediante el algoritmo de construcción de subconjuntos.
 
 # Importamos la clase utilizada para crear el AFD equivalente
 from AFD import AFD
@@ -12,24 +9,11 @@ from ValidadorAFND import ValidadorAFND
 
 
 class ConvertidorAFND:
-    """
-    Convierte un AFND válido en un AFD equivalente.
-
-    Cada estado del AFD representa un conjunto de estados
-    del AFND original. A estos conjuntos se les llama macroestados.
-    """
+    # Cada estado del AFD equivalente representa un conjunto de estados del AFND.
 
     @staticmethod
     def convertir(afnd):
-        """
-        Convierte el AFND recibido en un AFD equivalente.
-
-        Retorna:
-            afd: AFD generado mediante construcción de subconjuntos
-            equivalencias: relación entre macroestados y subconjuntos
-            errores: lista de errores encontrados durante la conversión
-        """
-
+        # Devolvemos el AFD, sus equivalencias y cualquier error de la conversión.
         # Antes de convertir, validamos que el AFND tenga
         # una estructura correcta
         valido, errores = ValidadorAFND.validar(afnd)
@@ -51,20 +35,14 @@ class ConvertidorAFND:
         # el estado inicial del AFND
         inicial = frozenset([afnd.estado_inicial])
 
-        # Este diccionario relaciona cada subconjunto del AFND
-        # con el identificador que tendrá dentro del AFD
-        #
-        # Ejemplo:
-        # frozenset({"q0", "q1"}) -> "B"
+        # Relacionamos cada subconjunto del AFND con su identificador en el AFD;
+        # por ejemplo, frozenset({"q0", "q1"}) puede recibir el nombre "B".
         subconjunto_a_nombre = {
             inicial: "A"
         }
 
-        # Este diccionario guarda la relación en el sentido contrario:
-        # nombre del macroestado -> conjunto de estados del AFND
-        #
-        # Ejemplo:
-        # "B" -> {"q0", "q1"}
+        # También guardamos la relación inversa para saber qué estados representa
+        # cada nombre; por ejemplo, "B" puede equivaler a {"q0", "q1"}.
         equivalencias = {
             "A": set(inicial)
         }
@@ -171,11 +149,7 @@ class ConvertidorAFND:
 
     @staticmethod
     def mostrar_equivalencias(equivalencias):
-        """
-        Muestra la relación entre los macroestados del AFD
-        y los subconjuntos de estados del AFND.
-        """
-
+        # Mostramos qué subconjunto del AFND representa cada macroestado del AFD.
         # Si no existen equivalencias, significa que todavía
         # no se ha realizado una conversión correctamente
         if not equivalencias:
@@ -225,14 +199,7 @@ class ConvertidorAFND:
 
     @staticmethod
     def _crear_identificador(indice):
-        """
-        Crea identificadores siguiendo este orden:
-
-        A, B, C, ..., Z, AA, AB, ..., AZ, BA...
-
-        Esto permite nombrar cualquier cantidad de macroestados.
-        """
-
+        # Creamos identificadores A, B, ..., Z, AA, AB... para los macroestados.
         # Aquí construiremos el identificador final
         resultado = ""
 
@@ -251,11 +218,8 @@ class ConvertidorAFND:
                 + resultado
             )
 
-            # Dividimos entre 26 para avanzar hacia
-            # la siguiente posición del identificador
-            #
-            # Se resta uno porque el sistema empieza en A,
-            # no existe un símbolo equivalente al cero
+            # Dividimos entre 26 para avanzar a la siguiente posición. Restamos uno
+            # porque esta numeración empieza en A y no tiene un símbolo para el cero.
             numero = numero // 26 - 1
 
             # Cuando el número queda debajo de cero,
@@ -265,11 +229,7 @@ class ConvertidorAFND:
 
     @staticmethod
     def _ordenar_identificadores(equivalencias):
-        """
-        Retorna los identificadores en el mismo orden
-        en que fueron agregados al diccionario.
-        """
-
+        # Conservamos el orden en que se descubrieron los macroestados.
         # Desde Python 3.7, los diccionarios conservan
         # el orden de inserción de sus elementos
         return list(equivalencias.keys())

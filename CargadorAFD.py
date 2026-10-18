@@ -4,57 +4,26 @@ from ValidadorAFD import ValidadorAFD
 from AFD import AFD
 
 class CargadorAFD:
-    """
-    Gestiona la creación de AFD de dos formas:
-    1. Creación manual: el usuario ingresa manualmente Q, Σ, q0, F y δ
-    2. Carga desde archivo: lee un archivo .txt con formato específico
-    
-    Formato de archivo esperado:
-    ├─ NOMBRE=MiAFD
-    ├─ ESTADOS=q0,q1,q2
-    ├─ ALFABETO=a,b
-    ├─ INICIAL=q0
-    ├─ FINALES=q2
-    ├─ TRANSICIONES:
-    ├─ q0,a,q1
-    ├─ q0,b,q0
-    ├─ q1,a,q2
-    └─ q1,b,q1
-    """
+    # Permitimos crear un AFD desde la consola o cargarlo desde un archivo de texto.
 
     @staticmethod
     def pedir_conjunto(mensaje, permitir_vacio=False, nombres_estados=False):
-        """
-        Solicita al usuario un conjunto de elementos separados por comas.
-        Valida que no haya elementos vacíos ni duplicados.
-        
-        Parámetros:
-            mensaje: Texto que se muestra al usuario pidiendo entrada
-            permitir_vacio: Si True, acepta entrada vacía; si False, requiere al menos un elemento
-        
-        Retorna:
-            Un set con los elementos ingresados, o set vacío si se permite y el usuario ingresa vacío
-        
-        Ejemplo:
-            pedir_conjunto("Estados: ") -> {"q0", "q1", "q2"}
-        """
+        # Pedimos elementos separados por comas y rechazamos vacíos o duplicados.
         
         while True:
             # Obtenemos y limpiamos la entrada
             entrada = input(mensaje).strip()
             
-            # ========== CASO: ENTRADA VACÍA ==========
-            # Si la entrada está vacía y se permite, retornamos set vacío
+            # Si el campo opcional está vacío, devolvemos un conjunto vacío.
             if entrada == "" and permitir_vacio:
                 return set()
             
-            # Si la entrada está vacía pero NO se permite, pedimos de nuevo
+            # Si el campo es obligatorio, una entrada vacía se pide de nuevo.
             if entrada == "":
                 print("La entrada no puede estar vacia.")
                 continue
             
-            # ========== PROCESAR ENTRADA ==========
-            # Dividimos por comas y limpiamos espacios de cada elemento
+            # Separamos la entrada por comas y limpiamos cada elemento.
             partes = entrada.split(",")
             elementos = []
             hay_vacios = False
@@ -70,13 +39,12 @@ class CargadorAFD:
                 
                 elementos.append(elemento)
             
-            # ========== VALIDACIÓN: SIN ESPACIOS VACÍOS ==========
+            # Una coma sin contenido entre elementos hace inválida la entrada.
             if hay_vacios:
                 print("No se permiten elementos vacios entre comas.")
                 continue
             
-            # ========== VALIDACIÓN: SIN DUPLICADOS ==========
-            # Comparamos cantidad de elementos con cantidad de elementos únicos
+            # Comparamos las cantidades para detectar elementos repetidos.
             if len(elementos) != len(set(elementos)):
                 print("No se permiten estados o símbolos duplicados.")
                 continue
@@ -95,27 +63,24 @@ class CargadorAFD:
 
     @staticmethod
     def crear_manual():
-        """
-        Guía al usuario a través de la creación manual de un AFD.
-        Solicita los 5 componentes: Q, Σ, q0, F, δ
-        """
+        # Construimos el AFD pidiendo al usuario cada componente de la quíntupla.
         print("\n=== CREACION MANUAL DEL AFD ===")
         afd = AFD()
         
-        # ========== PASO 1: NOMBRE DEL AFD ==========
+        # Primero pedimos un nombre para identificar el AFD.
         # Solicitar nombre hasta que sea válido
         while afd.nombre.strip() == "":
             afd.nombre = input("Nombre del automata: ").strip()
             if afd.nombre == "":
                 print("El nombre no puede estar vacio.")
         
-        # ========== PASO 2: CONJUNTO DE ESTADOS (Q) ==========
+        # Luego leemos el conjunto de estados Q.
         # Ejemplo: q0,q1,q2
         afd.estados = CargadorAFD.pedir_conjunto(
             "Estados separados por coma (ej. q0,q1,q2): ", nombres_estados=True
         )
         
-        # ========== PASO 3: ALFABETO (Σ) ==========
+        # El alfabeto Σ contiene los símbolos que podrá procesar el AFD.
         # Ejemplo: a,b
         while True:
             alfabeto = CargadorAFD.pedir_conjunto(
@@ -148,8 +113,7 @@ class CargadorAFD:
             afd.alfabeto = alfabeto
             break
                 
-        # ========== PASO 4: ESTADO INICIAL (q0) ==========
-        # Debe ser un elemento de Q
+        # El estado inicial q0 debe pertenecer al conjunto Q.
         while True:
             inicial = input("Estado inicial (debe estar en Q): ").strip()
             
@@ -159,8 +123,7 @@ class CargadorAFD:
             
             print("Error: el estado inicial debe pertenecer al conjunto Q.")
         
-        # ========== PASO 5: ESTADOS FINALES (F) ==========
-        # Deben ser un subconjunto de Q. Pueden estar vacíos.
+        # Los estados finales F deben pertenecer a Q, aunque el conjunto puede quedar vacío.
         while True:
             finales = CargadorAFD.pedir_conjunto(
                 "Estados finales separados por coma (Enter si no hay): ",
@@ -175,7 +138,7 @@ class CargadorAFD:
             
             print("Error: todos los estados finales deben pertenecer a Q.")
         
-        # ========== PASO 6: FUNCIÓN DE TRANSICIÓN (δ) ==========
+        # Por último, pedimos una transición por cada pareja de estado y símbolo.
         print("\nIngrese la función de transición.")
         print("Para cada pareja (estado, símbolo), ingrese el estado destino.")
         print("Esto creará un AFD completo y determinista.\n")
@@ -198,7 +161,7 @@ class CargadorAFD:
         
         return afd
 
-    # ========== PATRONES REGEX PARA VALIDACIÓN DE ARCHIVOS ==========
+    # Estos patrones describen la sintaxis permitida en los archivos de AFD.
     # Expresiones regulares para validar la sintaxis del archivo .txt
     # Cada patrón valida una línea específica del archivo
     _PATRON_ENCABEZADO = {
@@ -215,7 +178,7 @@ class CargadorAFD:
 
     @staticmethod
     def normalizar_ruta(ruta):
-        """Las rutas relativas parten de la carpeta desde donde se ejecutó Python."""
+        # Interpretamos las rutas relativas desde la carpeta donde se ejecutó Python.
         ruta = os.fspath(ruta)
         if isinstance(ruta, str):
             ruta = ruta.strip()
@@ -228,27 +191,9 @@ class CargadorAFD:
 
     @staticmethod
     def cargar_archivo(ruta):
-        """
-        Carga un AFD desde un archivo .txt con formato específico.
+        # Cargamos el AFD desde un archivo de texto y devolvemos None si hay errores.
         
-        Formato esperado:
-            Línea 1: NOMBRE=NombreDelAFD
-            Línea 2: ESTADOS=q0,q1,q2,...
-            Línea 3: ALFABETO=a,b,c,...
-            Línea 4: INICIAL=q0
-            Línea 5: FINALES=q1,q2,...  (puede ser vacío)
-            Línea 6: TRANSICIONES:
-            Líneas 7+: origen,símbolo,destino
-        
-        Parámetros:
-            ruta: Ruta al archivo .txt
-        
-        Retorna:
-            Objeto AFD si se cargó correctamente, None si hay errores
-        """
-        
-        # ========== PASO 1: LEER EL ARCHIVO ==========
-        # Validar extensión antes de intentar abrir el archivo.
+        # Antes de leer, comprobamos que la ruta apunte a un archivo .txt.
         # Se acepta .txt en cualquier combinación de mayúsculas/minúsculas.
         ruta_normalizada = CargadorAFD.normalizar_ruta(ruta)
         _, extension = os.path.splitext(ruta_normalizada)
@@ -262,9 +207,7 @@ class CargadorAFD:
             print("Error: No fue posible abrir el archivo:", error)
             return None
         
-        # ========== PASO 2: LIMPIAR LÍNEAS ==========
-        # Removemos saltos de línea pero preservamos líneas vacías
-        # para reportar errores con número de línea exacto
+        # Quitamos los saltos de línea y conservamos los vacíos para reportarlos con precisión.
         limpias = []
         for linea in lineas:
             limpias.append(linea.strip())
@@ -278,8 +221,7 @@ class CargadorAFD:
         afd = AFD()
         errores = []
         
-        # ========== PASO 3: VALIDAR ENCABEZADOS ==========
-        # Las primeras 5 líneas deben cumplir el patrón CLAVE=valor
+        # Las primeras cinco líneas deben tener la forma CLAVE=valor.
         claves_orden = ["NOMBRE", "ESTADOS", "ALFABETO", "INICIAL", "FINALES"]
         valores_encabezado = {}
         
@@ -311,7 +253,7 @@ class CargadorAFD:
                 print("-", error)
             return None
         
-        # ========== PASO 4: EXTRAER COMPONENTES ==========
+        # Con los encabezados válidos, asignamos los componentes del AFD.
         afd.nombre = valores_encabezado["NOMBRE"]
         
         estados_texto = valores_encabezado["ESTADOS"]
@@ -330,7 +272,7 @@ class CargadorAFD:
             finales_texto, "FINALES", permitir_vacio=True
         )
 
-        # ========== VALIDAR SÍMBOLOS DEL ALFABETO DEL ARCHIVO ==========
+        # Aplicamos al alfabeto del archivo las mismas reglas de la entrada manual.
         if error_alfabeto is None:
             for simbolo in alfabeto:
                 if ValidadorAFD.es_simbolo_epsilon(simbolo):
@@ -379,9 +321,7 @@ class CargadorAFD:
                 print("-", error)
             return None
         
-        # ========== PASO 5: PROCESAR TRANSICIONES ==========
-        # Las líneas después de "TRANSICIONES:" contienen las transiciones
-        # Cada línea debe cumplir el patrón: origen,símbolo,destino
+        # Después de TRANSICIONES: leemos cada línea como origen,símbolo,destino.
         for indice in range(6, len(limpias)):
             linea = limpias[indice]
             
@@ -409,7 +349,7 @@ class CargadorAFD:
             simbolo = coincidencia.group("simbolo")
             destino = coincidencia.group("destino")
             
-            # ========== VALIDACIÓN SEMÁNTICA DE LA TRANSICIÓN ==========
+            # Validamos que el origen, el símbolo y el destino ya estén declarados.
             linea_valida = True
             numero_linea = indice + 1
 
@@ -488,20 +428,8 @@ class CargadorAFD:
 
     @staticmethod
     def convertir_lista_archivo(texto, nombre_campo, permitir_vacio):
-        """
-        Convierte un string separado por comas en un set.
-        Valida que no haya elementos vacíos ni duplicados.
-        
-        Parámetros:
-            texto: String con elementos separados por comas
-            nombre_campo: Nombre del campo (para mensajes de error)
-            permitir_vacio: Si False, requiere al menos un elemento
-        
-        Retorna:
-            Tupla (set_elementos, error_mensaje)
-            Si no hay error, error_mensaje es None
-        """
-        # ========== CASO: CAMPO VACÍO ==========
+        # Convertimos una lista separada por comas en un conjunto y devolvemos cualquier error.
+        # Primero resolvemos el caso de un campo vacío.
         if texto == "":
             if permitir_vacio:
                 # Si se permite vacío (e.g., FINALES), retornar set vacío
@@ -509,7 +437,7 @@ class CargadorAFD:
             # Si no se permite (e.g., ESTADOS), retornar error
             return None, "Error: El campo " + nombre_campo + " no puede estar vacío."
         
-        # ========== PROCESAR ELEMENTOS ==========
+        # Separamos y limpiamos todos los elementos del campo.
         partes = texto.split(",")
         elementos = []
         
@@ -531,7 +459,7 @@ class CargadorAFD:
                 if error:
                     return None, nombre_campo + ": " + repr(elemento) + ": " + error
         
-        # ========== VALIDAR DUPLICADOS ==========
+        # Rechazamos los valores repetidos antes de construir el conjunto.
         if len(elementos) != len(set(elementos)):
             return None, (
                 "Error: El campo " + nombre_campo + " contiene elementos duplicados."

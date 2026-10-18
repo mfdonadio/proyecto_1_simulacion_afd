@@ -6,26 +6,9 @@ from ValidadorAFND import ValidadorAFND
 from ValidadorAFD import ValidadorAFD
 
 class CargadorAFND:
-    """
-Gestiona la creación de AFND de dos formas:
-1. Creación manual: el usuario ingresa manualmente Q, Σ, q0, F y δ
-2. Carga desde archivo: lee un archivo .txt con formato específico
+    # Permitimos crear un AFND desde la consola o cargarlo desde un archivo de texto.
 
-Formato de archivo esperado:
-├─ NOMBRE=MiAFND
-├─ TIPO=AFND
-├─ ESTADOS=q0,q1,q2
-├─ ALFABETO=a,b
-├─ INICIAL=q0
-├─ FINALES=q2
-├─ TRANSICIONES:
-├─ q0,a,q0|q1 ---> la barra vertical separa los diferentes destinos
-├─ q0,b,q0
-├─ q1,a,q2
-└─ q1,b,q1
-    """
-
-        # Identificamos los encabezados y sus valores
+    # Identificamos los encabezados y sus valores.
     _PATRON_ENCABEZADO = re.compile(
         r"^(?P<clave>NOMBRE|TIPO|ESTADOS|ALFABETO|INICIAL|FINALES)="
         r"(?P<valor>.*)$"
@@ -44,37 +27,22 @@ Formato de archivo esperado:
 
     @staticmethod
     def pedir_conjunto_afnd(mensaje, permitir_vacio=False, nombres_estados=False):
-        """
-        Solicita al usuario un conjunto de elementos separados por comas.
-        Valida que no haya elementos vacíos ni duplicados.
-        
-        Parámetros:
-            mensaje: Texto que se muestra al usuario pidiendo entrada
-            permitir_vacio: Si True, acepta entrada vacía; si False, requiere al menos un elemento
-        
-        Retorna:
-            Un set con los elementos ingresados, o set vacío si se permite y el usuario ingresa vacío
-        
-        Ejemplo:
-            pedir_conjunto("Estados: ") -> {"q0", "q1", "q2"}
-        """
+        # Pedimos elementos separados por comas y rechazamos vacíos o duplicados.
         
         while True:
             # Obtenemos y limpiamos la entrada
             entrada = input(mensaje).strip()
             
-            # ========== CASO: ENTRADA VACÍA ==========
-            # Si la entrada está vacía y se permite, retornamos set vacío
+            # Si el campo opcional está vacío, devolvemos un conjunto vacío.
             if entrada == "" and permitir_vacio:
                 return set()
             
-            # Si la entrada está vacía pero NO se permite, pedimos de nuevo
+            # Si el campo es obligatorio, una entrada vacía se pide de nuevo.
             if entrada == "":
                 print("La entrada no puede estar vacia.")
                 continue
             
-            # ========== PROCESAR ENTRADA ==========
-            # Dividimos por comas y limpiamos espacios de cada elemento
+            # Separamos la entrada por comas y limpiamos cada elemento.
             partes = entrada.split(",")
             elementos = []
             hay_vacios = False
@@ -90,13 +58,12 @@ Formato de archivo esperado:
                 
                 elementos.append(elemento)
             
-            # ========== VALIDACIÓN: SIN ESPACIOS VACÍOS ==========
+            # Una coma sin contenido entre elementos hace inválida la entrada.
             if hay_vacios:
                 print("No se permiten elementos vacios entre comas.")
                 continue
             
-            # ========== VALIDACIÓN: SIN DUPLICADOS ==========
-            # Comparamos cantidad de elementos con cantidad de elementos únicos
+            # Comparamos las cantidades para detectar elementos repetidos.
             if len(elementos) != len(set(elementos)):
                 print("No se permiten estados o símbolos duplicados.")
                 continue
@@ -115,27 +82,24 @@ Formato de archivo esperado:
     
     @staticmethod
     def crear_manual():
-        """
-        Guía al usuario a través de la creación manual de un AFND.
-        Solicita los 5 componentes: Q, Σ, q0, F, δ
-        """
+        # Construimos el AFND pidiendo al usuario cada componente de la quíntupla.
         print("\n=== CREACION MANUAL DEL AFND ===")
         afnd = AFND()
         
-        # ========== PASO 1: NOMBRE DEL AFND ==========
+        # Primero pedimos un nombre para identificar el AFND.
         # Solicitar nombre hasta que sea válido
         while afnd.nombre.strip() == "":
             afnd.nombre = input("Nombre del automata: ").strip()
             if afnd.nombre == "":
                 print("El nombre no puede estar vacio.")
         
-        # ========== PASO 2: CONJUNTO DE ESTADOS (Q) ==========
+        # Luego leemos el conjunto de estados Q.
         # Ejemplo: q0,q1,q2
         afnd.estados = CargadorAFND.pedir_conjunto_afnd(
             "Estados separados por coma (ej. q0,q1,q2): ", nombres_estados=True
         )
         
-        # ========== PASO 3: ALFABETO (Σ) ==========
+        # El alfabeto Σ contiene los símbolos que podrá procesar el AFND.
         # Ejemplo: a,b
         while True:
             alfabeto = CargadorAFND.pedir_conjunto_afnd(
@@ -168,8 +132,7 @@ Formato de archivo esperado:
             afnd.alfabeto = alfabeto
             break
                 
-        # ========== PASO 4: ESTADO INICIAL (q0) ==========
-        # Debe ser un elemento de Q
+        # El estado inicial q0 debe pertenecer al conjunto Q.
         while True:
             inicial = input("Estado inicial (debe estar en Q): ").strip()
             
@@ -179,8 +142,7 @@ Formato de archivo esperado:
             
             print("Error: el estado inicial debe pertenecer al conjunto Q.")
         
-        # ========== PASO 5: ESTADOS FINALES (F) ==========
-        # Deben ser un subconjunto de Q. Pueden estar vacíos.
+        # Los estados finales F deben pertenecer a Q, aunque el conjunto puede quedar vacío.
         while True:
             finales = CargadorAFND.pedir_conjunto_afnd(
                 "Estados finales separados por coma (Enter si no hay): ",
@@ -195,7 +157,7 @@ Formato de archivo esperado:
             
             print("Error: todos los estados finales deben pertenecer a Q.")
         
-        # ========== PASO 6: FUNCIÓN DE TRANSICIÓN (δ) ==========
+        # Por último, pedimos los posibles destinos de cada pareja de transición.
         print("\nIngrese la función de transición.")
         print("Para cada pareja (estado, símbolo), ingrese el estado(s) destino.")
         print("Puede indicar varios destinos o un conjunto vacío.\n")
@@ -233,7 +195,7 @@ Formato de archivo esperado:
     
     @staticmethod
     def cargar_archivo(ruta):
-        """Carga un AFND y muestra los errores encontrados."""
+        # Cargamos el AFND desde un archivo y mostramos cualquier error encontrado.
 
         # Validar extensión antes de intentar abrir el archivo.
         # Se acepta .txt en cualquier combinación de mayúsculas/minúsculas.
@@ -384,7 +346,7 @@ Formato de archivo esperado:
 
     @staticmethod
     def construir_afnd(encabezados, transiciones):
-            #Convierte los textos validados en conjuntos y transiciones.#
+            # Convertimos los textos ya validados en conjuntos y transiciones.
             errores = []
             afnd = AFND(encabezados["NOMBRE"].strip())
             estados, error = CargadorAFD.convertir_lista_archivo(
@@ -453,7 +415,7 @@ Formato de archivo esperado:
 
     @staticmethod
     def convertir_destinos(texto):
-        #Convierte destino1|destino2 en un conjunto;  ∅ produce set().#
+        # Convertimos destino1|destino2 en un conjunto; ∅ produce set().
         texto =texto.strip()
         if texto in CargadorAFND._VACIO:
             return set(), None
