@@ -385,10 +385,6 @@ def main():
     # Cargar AFD/AFND borra ap_actual; cargar AP borra automata_actual y afd_generado.
     # Esto evita ambigüedad en las opciones 5-13 que operan sobre el activo.
 
-    print("\nBienvenido al motor de autómatas - Fases 1, 2 y 3")
-    print("Las rutas relativas parten de:", os.getcwd())
-    print("Puede pegar rutas absolutas o relativas entre comillas coincidentes.")
-
     while True:
         try:
             mostrar_menu()
