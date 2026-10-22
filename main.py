@@ -251,9 +251,7 @@ def evaluar_archivo_cadenas_ap(ap, limite):
                 print("\nCadena {}: {!r}".format(numero, cadena))
                 # Presupuesto se reinicia por cada cadena del lote.
                 resultado = SimuladorAP.evaluar(ap, cadena, limite=limite)
-                print("Resultado: {} — {}".format(
-                    resultado.estado_resultado, resultado.motivo
-                ))
+                SimuladorAP.mostrar_traza(resultado, ap)
                 if resultado.estado_resultado != ENTRADA_INVALIDA:
                     resumen = {
                         "cadena": cadena,
@@ -294,7 +292,7 @@ def mostrar_analisis_ap(ap):
     print("NOTA: El siguiente análisis se basa en conectividad del grafo de estados.")
     print("      No tiene en cuenta la pila ni los símbolos de entrada.")
     print("      Un estado conectado no garantiza que exista una ejecución realizable.")
-    print("      La decisión D03 sobre el alcance exacto de este análisis está pendiente.\n")
+    print()
 
     if not ap.estados:
         print("Sin estados definidos.")
@@ -322,11 +320,13 @@ def mostrar_analisis_ap(ap):
     print("Inaccesibles (grafo) :", _formatear_conjunto(inaccesibles))
     print("Finales alcanzables  :", _formatear_conjunto(finales_alcanzables))
     if not finales_alcanzables:
-        print("Observación: ningún estado final es alcanzable en el grafo.")
-        print("             (No implica lenguaje vacío: depende de la pila y la entrada.)")
+        print("Conclusión: el lenguaje es vacío bajo aceptación por estado final.")
+        print("           Ninguna ejecución puede llegar a un estado final si no existe")
+        print("           siquiera un camino hacia él en el grafo de estados.")
     else:
         print("Observación: al menos un estado final es alcanzable en el grafo.")
-        print("             (No implica lenguaje no vacío: depende de la pila y la entrada.)")
+        print("             Esto no permite afirmar que el lenguaje sea no vacío:")
+        print("             todavía deben cumplirse las condiciones de entrada y pila.")
 
 
 # Solo aceptamos límites enteros positivos y conservamos el anterior al cancelar.

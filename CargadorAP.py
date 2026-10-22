@@ -271,6 +271,18 @@ def _construir_ap_desde_datos(datos_enc, lineas_transicion, errores_acum):
         errores_acum.append(
             "ALFABETO: '{}' está reservado y no puede pertenecer a Σ.".format(EPS)
         )
+    simbolos_entrada_invalidos = [
+        simbolo
+        for simbolo in alfabeto_lista
+        if simbolo != EPS and len(simbolo) != 1
+    ]
+    if simbolos_entrada_invalidos:
+        errores_acum.append(
+            "ALFABETO: cada símbolo de entrada debe tener exactamente un carácter; "
+            "se encontró: {}.".format(
+                ", ".join(repr(simbolo) for simbolo in simbolos_entrada_invalidos)
+            )
+        )
     if EPS in alfa_pila_lista:
         errores_acum.append(
             "ALFABETO_PILA: '{}' está reservado y no puede pertenecer a Γ.".format(EPS)
@@ -538,6 +550,15 @@ def crear_manual():
         if EPS in lista:
             print(
                 "Error: '{}' está reservado y no puede pertenecer a Σ.".format(EPS)
+            )
+            continue
+        simbolos_invalidos = [simbolo for simbolo in lista if len(simbolo) != 1]
+        if simbolos_invalidos:
+            print(
+                "Error: cada símbolo de entrada debe tener exactamente un carácter; "
+                "se encontró: {}.".format(
+                    ", ".join(repr(simbolo) for simbolo in simbolos_invalidos)
+                )
             )
             continue
         ap.alfabeto = set(lista)

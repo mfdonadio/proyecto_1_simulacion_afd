@@ -1,5 +1,6 @@
 # Este simulador recorre por niveles las ramas de un APD o APND.
-# La pila es una tupla con el tope en el índice 0 y EPS no consume entrada.
+# La pila interna es persistente e inmutable, con el tope en el primer nodo;
+# los testigos públicos conservan tuplas con el tope en el índice 0.
 # Una cadena se acepta cuando se consumió completa y el estado es final,
 # sin exigir que la pila quede vacía.
 
@@ -15,6 +16,38 @@ ACEPTADA            = "ACEPTADA"
 RECHAZADA           = "RECHAZADA"
 DETENIDA_POR_LIMITE = "DETENIDA_POR_LIMITE"
 ENTRADA_INVALIDA    = "ENTRADA_INVALIDA"
+
+
+# Nodo interno de una pila persistente. La igualdad por identidad es correcta
+# porque cada evaluación reutiliza un único nodo para cada par (símbolo, resto).
+# Así, ramas con el mismo contenido pueden compartir memoria sin poder mutarse.
+class _NodoPila:
+    __slots__ = ("simbolo", "resto")
+
+    def __init__(self, simbolo, resto):
+        self.simbolo = simbolo
+        self.resto = resto
+
+
+def _apilar_tokens(tokens, fondo, cache_pilas):
+    pila = fondo
+    for simbolo in reversed(tokens):
+        clave = (simbolo, pila)
+        nodo = cache_pilas.get(clave)
+        if nodo is None:
+            nodo = _NodoPila(simbolo, pila)
+            cache_pilas[clave] = nodo
+        pila = nodo
+    return pila
+
+
+def _pila_interna_a_tupla(pila):
+    simbolos = []
+    actual = pila
+    while actual is not None:
+        simbolos.append(actual.simbolo)
+        actual = actual.resto
+    return tuple(simbolos)
 
 
 # Reúne el veredicto, los contadores y el camino que demuestra una aceptación.
@@ -33,10 +66,10 @@ class ResultadoSimulacion:
     camino_testigo: list = field(default_factory=list)
 
 
-# Cada nodo conserva su padre y sus ancestros para reconstruir el camino y
-# reconocer una configuración repetida dentro de esa misma rama.
+# Cada nodo conserva su padre para reconstruir el camino y comprobar si una
+# configuración anterior pertenece a esa misma rama sin copiar sus ancestros.
 def _crear_nodo(nodo_id, id_padre, id_rama, profundidad,
-                estado, posicion, pila, transicion, ancestros):
+                estado, posicion, pila, transicion, datos_transicion):
     return {
         "id": nodo_id,
         "id_padre": id_padre,
@@ -46,8 +79,31 @@ def _crear_nodo(nodo_id, id_padre, id_rama, profundidad,
         "posicion": posicion,
         "pila": pila,
         "transicion": transicion,
-        "ancestros": ancestros,
+        "datos_transicion": datos_transicion,
     }
+
+
+# Comprueba la relación de ascendencia usando las profundidades y los enlaces
+# de padre. El índice global solo localiza configuraciones iguales: una
+# coincidencia de otra rama no se trata como ciclo.
+def _es_ancestro(id_candidato, nodo, nodos_por_id):
+    candidato = nodos_por_id[id_candidato]
+    if candidato["profundidad"] > nodo["profundidad"]:
+        return False
+
+    actual = nodo
+    while actual["profundidad"] > candidato["profundidad"]:
+        actual = nodos_por_id[actual["id_padre"]]
+
+    return actual["id"] == id_candidato
+
+
+def _configuracion_en_camino(configuracion, nodo, ids_por_configuracion,
+                             nodos_por_id):
+    for id_candidato in ids_por_configuracion.get(configuracion, ()):
+        if _es_ancestro(id_candidato, nodo, nodos_por_id):
+            return True
+    return False
 
 # Seguimos los padres desde el nodo aceptador y luego invertimos el recorrido.
 def _reconstruir_testigo(nodo_aceptador, nodos_por_id):
@@ -58,7 +114,15 @@ def _reconstruir_testigo(nodo_aceptador, nodos_por_id):
         id_padre = nodo_actual["id_padre"]
         nodo_actual = nodos_por_id.get(id_padre)  # None cuando id_padre es None (raíz)
     camino.reverse()
-    return camino
+
+    # El detalle interno de la pila compartida no forma parte del resultado
+    # público. Solo el camino aceptador, normalmente pequeño, se materializa.
+    camino_publico = []
+    for nodo in camino:
+        copia = dict(nodo)
+        copia["pila"] = _pila_interna_a_tupla(nodo["pila"])
+        camino_publico.append(copia)
+    return camino_publico
 
 # Convertimos la transición al texto que después utiliza la tabla del testigo.
 def _texto_transicion(entrada, tope, destino, reemplazo):
@@ -72,6 +136,37 @@ def _texto_transicion(entrada, tope, destino, reemplazo):
 # Evalúa la cadena con BFS y devuelve un ResultadoSimulacion.
 # El límite cuenta configuraciones admitidas e incluye el nodo inicial.
 def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
+    # Parámetro conservado por compatibilidad. evaluar() siempre es el núcleo
+    # silencioso; evaluar_y_mostrar() se encarga de presentar la traza.
+    _ = mostrar_traza
+
+    # Defensa ante modelos antiguos o modificados sin revalidar: el motor avanza
+    # por caracteres, así que no puede interpretar símbolos de entrada más largos.
+    simbolos_entrada_invalidos = [
+        simbolo
+        for simbolo in ap.alfabeto
+        if not isinstance(simbolo, str) or len(simbolo) != 1
+    ]
+    if simbolos_entrada_invalidos:
+        return ResultadoSimulacion(
+            estado_resultado=ENTRADA_INVALIDA,
+            motivo=(
+                "Alfabeto de entrada inválido: cada símbolo de Σ debe ser una "
+                "cadena de exactamente un carácter; se encontró: {}."
+            ).format(
+                ", ".join(
+                    repr(simbolo)
+                    for simbolo in sorted(simbolos_entrada_invalidos, key=repr)
+                )
+            ),
+            cadena=cadena,
+            admitidas=0,
+            procesadas=0,
+            generadas=0,
+            podadas_limite=0,
+            limite_usado=limite,
+        )
+
     # Sin la marca de validación no iniciamos la exploración.
     if not ap.es_valido:
         return ResultadoSimulacion(
@@ -116,6 +211,10 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
     longitud = len(cadena)
 
     # La raíz representa el estado inicial, la posición cero y la pila con Z0.
+    cache_pilas = {}
+    pila_inicial = _apilar_tokens(
+        (ap.simbolo_inicial_pila,), None, cache_pilas
+    )
     nodo_raiz = _crear_nodo(
         nodo_id=0,
         id_padre=None,
@@ -123,15 +222,23 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
         profundidad=0,
         estado=ap.estado_inicial,
         posicion=0,
-        pila=(ap.simbolo_inicial_pila,),
+        pila=pila_inicial,
         transicion=None,
-        ancestros=frozenset(),
+        datos_transicion=None,
     )
 
     cola = collections.deque([nodo_raiz])
 
     # Relacionamos cada identificador con su nodo para reconstruir el testigo.
     nodos_por_id = {0: nodo_raiz}
+
+    # Este índice evita recorrer y copiar todos los ancestros de cada nodo.
+    # No elimina configuraciones globalmente: solo permite buscar candidatos
+    # iguales y luego confirmar que pertenezcan al camino de la rama actual.
+    config_raiz = (
+        nodo_raiz["estado"], nodo_raiz["posicion"], nodo_raiz["pila"]
+    )
+    ids_por_configuracion = {config_raiz: [0]}
 
     # El siguiente contador asigna un identificador distinto a cada nodo.
     siguiente_id = 1
@@ -161,10 +268,27 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
             pasos.append({
                 "tipo": "aceptacion",
                 "id_nodo": nodo["id"],
+                "id_padre": nodo["id_padre"],
+                "id_rama": nodo["id_rama"],
+                "profundidad": nodo["profundidad"],
                 "estado": estado,
                 "posicion": posicion,
-                "pila": pila,
+                "pila": _pila_interna_a_tupla(pila),
             })
+
+            # BFS puede dejar nodos admitidos en la cola cuando encuentra el
+            # primer testigo. Se identifican como pendientes, no rechazados.
+            for pendiente in cola:
+                pasos.append({
+                    "tipo": "rama_pendiente_por_aceptacion",
+                    "id_nodo": pendiente["id"],
+                    "id_padre": pendiente["id_padre"],
+                    "id_rama": pendiente["id_rama"],
+                    "profundidad": pendiente["profundidad"],
+                    "estado": pendiente["estado"],
+                    "posicion": pendiente["posicion"],
+                    "pila": pendiente["pila"],
+                })
             return ResultadoSimulacion(
                 estado_resultado=ACEPTADA,
                 motivo="Entrada consumida con estado final '{}'.".format(estado),
@@ -184,12 +308,16 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
             pasos.append({
                 "tipo": "rama_muerta_pila_vacia",
                 "id_nodo": nodo["id"],
+                "id_padre": nodo["id_padre"],
+                "id_rama": nodo["id_rama"],
+                "profundidad": nodo["profundidad"],
                 "estado": estado,
                 "posicion": posicion,
+                "pila": None,
             })
             continue
 
-        tope = pila[0]
+        tope = pila.simbolo
 
         # Revisamos primero EPS y luego consumo, respetando el orden declarado.
         alternativas = []
@@ -209,6 +337,9 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
             pasos.append({
                 "tipo": "rama_muerta_bloqueada",
                 "id_nodo": nodo["id"],
+                "id_padre": nodo["id_padre"],
+                "id_rama": nodo["id_rama"],
+                "profundidad": nodo["profundidad"],
                 "estado": estado,
                 "posicion": posicion,
                 "pila": pila,
@@ -226,18 +357,32 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
 
             # El reemplazo se inserta en lugar del tope. Como el índice 0 es
             # la cima, su primer token queda arriba; () representa desapilar.
-            nueva_pila = reemplazo + pila[1:]
+            nueva_pila = _apilar_tokens(reemplazo, pila.resto, cache_pilas)
 
             config_nueva = (destino, nueva_posicion, nueva_pila)
 
-            # Solo cerramos un ciclo si coinciden estado, posición y pila completa.
-            # La misma posición con otra pila todavía representa otra ejecución.
-            if config_nueva in nodo["ancestros"]:
+            # Solo cerramos un ciclo si estado, posición y pila completa ya
+            # aparecieron en esta rama. Configuraciones de ramas hermanas no se
+            # confunden, y un auto-bucle se reconoce sin gastar presupuesto.
+            if _configuracion_en_camino(
+                    config_nueva, nodo, ids_por_configuracion, nodos_por_id):
                 pasos.append({
                     "tipo": "ciclo_detectado",
                     "id_nodo": nodo["id"],
-                    "config_repetida": config_nueva,
+                    "id_padre": nodo["id_padre"],
+                    "id_rama": nodo["id_rama"],
+                    "profundidad": nodo["profundidad"],
+                    "estado": estado,
+                    "posicion": posicion,
+                    "pila": pila,
+                    "config_repetida": (
+                        config_nueva[0], config_nueva[1],
+                        _pila_interna_a_tupla(config_nueva[2]),
+                    ),
                     "entrada": entrada,
+                    "tope": tope,
+                    "destino": destino,
+                    "reemplazo": reemplazo,
                 })
                 continue
 
@@ -254,10 +399,11 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
                     # Única continuación: hereda la rama del padre.
                     id_rama_hijo = nodo["id_rama"]
 
-                # Los ancestros del hijo incluyen la configuración actual
-                # del padre, para que el hijo pueda detectar ciclos.
-                ancestros_hijo = nodo["ancestros"] | {
-                    (estado, posicion, pila)
+                datos_transicion = {
+                    "entrada": entrada,
+                    "tope": tope,
+                    "destino": destino,
+                    "reemplazo": reemplazo,
                 }
 
                 descripcion_trans = _texto_transicion(
@@ -273,10 +419,11 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
                     posicion=nueva_posicion,
                     pila=nueva_pila,
                     transicion=descripcion_trans,
-                    ancestros=ancestros_hijo,
+                    datos_transicion=datos_transicion,
                 )
 
                 nodos_por_id[id_hijo] = nodo_hijo
+                ids_por_configuracion.setdefault(config_nueva, []).append(id_hijo)
                 admitidas += 1
                 cola.append(nodo_hijo)
 
@@ -285,6 +432,10 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
                     "id_padre": nodo["id"],
                     "id_hijo": id_hijo,
                     "id_rama": id_rama_hijo,
+                    "profundidad": nodo_hijo["profundidad"],
+                    "estado_origen": estado,
+                    "posicion_antes": posicion,
+                    "pila_antes": pila,
                     "entrada": entrada,
                     "tope": tope,
                     "destino": destino,
@@ -302,17 +453,31 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
                 pasos.append({
                     "tipo": "podada_por_limite",
                     "id_padre": nodo["id"],
+                    "id_rama": nodo["id_rama"],
+                    "profundidad": nodo["profundidad"] + 1,
+                    "estado_origen": estado,
+                    "posicion_antes": posicion,
+                    "pila_antes": pila,
                     "entrada": entrada,
+                    "tope": tope,
                     "destino": destino,
+                    "reemplazo": reemplazo,
+                    "nueva_posicion": nueva_posicion,
+                    "nueva_pila": nueva_pila,
                     "limite": limite,
                 })
 
     # Una poda por presupuesto deja el resultado inconcluso; sin podas, el
     # agotamiento de todas las ramas sí permite responder RECHAZADA.
     if hubo_poda:
+        detalle_poda = (
+            "1 alternativa no explorada"
+            if podadas_limite == 1
+            else "{} alternativas no exploradas".format(podadas_limite)
+        )
         motivo = (
             "Presupuesto de {} configuraciones agotado; "
-            "{} alternativas no exploradas.".format(limite, podadas_limite)
+            "{}.".format(limite, detalle_poda)
         )
         return ResultadoSimulacion(
             estado_resultado=DETENIDA_POR_LIMITE,
@@ -339,7 +504,8 @@ def evaluar(ap, cadena, limite=10000, mostrar_traza=True):
         )
 
 
-# Muestra el resumen y, cuando existe, el camino que demuestra la aceptación.
+# Muestra el resumen y el recorrido realmente explorado. Las entradas inválidas
+# no tienen recorrido porque se detectan antes de crear la configuración raíz.
 def mostrar_traza(resultado, ap):
     print()
     print("=" * 62)
@@ -354,131 +520,235 @@ def mostrar_traza(resultado, ap):
     print("Alternativas generadas     : {}".format(resultado.generadas))
     print("Alternativas podadas       : {}".format(resultado.podadas_limite))
 
-    if resultado.estado_resultado == ACEPTADA and resultado.camino_testigo:
+    if resultado.estado_resultado == ENTRADA_INVALIDA:
         print()
-        # Orientación de pila explícita para el lector.
+        print("No se inició un recorrido: la entrada o la configuración es inválida.")
+    else:
+        print()
         print("Convención de pila: tope → fondo (el tope es el primer token).")
-        print()
-        _imprimir_tabla_testigo(resultado.camino_testigo, resultado.cadena)
+        if resultado.camino_testigo:
+            ids_testigo = [str(nodo["id"]) for nodo in resultado.camino_testigo]
+            print("Camino testigo (nodos): {}".format(" -> ".join(ids_testigo)))
+        _imprimir_recorrido(resultado, ap)
 
-    elif resultado.estado_resultado == DETENIDA_POR_LIMITE:
+    if resultado.estado_resultado == DETENIDA_POR_LIMITE:
         print()
         print("Nota: el presupuesto se agotó antes de completar la exploración.")
         print("      No se puede afirmar rechazo; puede haber cadenas aceptadas")
         print("      en las ramas no exploradas.")
+    elif resultado.estado_resultado == RECHAZADA:
+        print()
+        print("Conclusión: todas las ramas explorables cerraron sin aceptar.")
 
     print("=" * 62)
 
-# La tabla conserva el estado y la pila antes y después de cada transición.
-# Si el testigo es muy largo, muestra el inicio y el final con un aviso.
-def _imprimir_tabla_testigo(camino, cadena):
-    total = len(camino)
+# Devuelve el sufijo de entrada visible en una configuración.
+def _entrada_restante(cadena, posicion):
+    if posicion < len(cadena):
+        return cadena[posicion:]
+    return "ε"
 
-    # Seleccionamos todos los pasos o un resumen de los extremos si la traza es larga.
-    if total > 50:
+
+# Las exploraciones grandes se resumen antes de convertir pilas a texto. Todos
+# los eventos permanecen disponibles en ResultadoSimulacion.pasos.
+def _seleccionar_eventos(eventos):
+    if len(eventos) <= 50:
+        return list(eventos), 0
+    seleccion = list(eventos[:25]) + [None] + list(eventos[-10:])
+    return seleccion, len(eventos) - 35
+
+
+def _avisar_resumen(nombre, total, omitidos):
+    if omitidos:
         print(
-            "[AVISO] El camino testigo tiene {} pasos. "
-            "Se muestran los primeros 25 y los últimos 10.".format(total)
+            "[AVISO] {} contiene {} eventos; se muestran los primeros 25 y "
+            "los últimos 10 ({} omitidos en pantalla).".format(
+                nombre, total, omitidos
+            )
         )
-        pasos_mostrar = list(range(25)) + list(range(total - 10, total))
-        truncado = True
-    else:
-        pasos_mostrar = list(range(total))
-        truncado = False
+        print("        El detalle estructurado completo se conserva en resultado.pasos.")
 
-    # Definimos las columnas que explican cada cambio de configuración.
-    encabezados = [
-        "Paso", "Rama", "Estado", "Entrada restante",
-        "Pila antes", "Consumido", "Tope", "Destino", "Reemplazo", "Pila después",
-    ]
 
-    # Construimos las filas a partir del nodo inicial y las transiciones del testigo.
-    # Cada fila parte del nodo padre, muestra la transición y termina en el nodo
-    # actual. En la raíz solo mostramos la configuración inicial.
-    filas = []
-    for paso_idx, i in enumerate(pasos_mostrar):
-        nodo = camino[i]
-        id_rama = str(nodo["id_rama"])
-
-        if nodo["transicion"] is None:
-            # Fila raíz: configuración inicial sin transición previa.
-            estado    = nodo["estado"]
-            posicion  = nodo["posicion"]
-            pila      = nodo["pila"]
-            entrada_restante = cadena[posicion:] if posicion < len(cadena) else "ε"
-            pila_antes_texto = _pila_a_texto(pila)
-            consumido  = "-"
-            tope_texto = pila[0] if pila else "∅"
-            destino    = "-"
-            reemplazo  = "-"
-            pila_despues = "-"
-        else:
-            # Fila de transición: "pila antes" es la pila del nodo padre.
-            nodo_padre = camino[i - 1] if i > 0 else nodo
-            pila_padre = nodo_padre["pila"]
-            estado = nodo_padre["estado"]
-            posicion = nodo_padre["posicion"]
-            entrada_restante = cadena[posicion:] if posicion < len(cadena) else "ε"
-            pila_antes_texto = _pila_a_texto(pila_padre)
-            tope_texto = pila_padre[0] if pila_padre else "∅"
-            # La transición aplicada está registrada en el nodo actual.
-            consumido, destino, reemplazo = _parsear_trans_desc(nodo["transicion"])
-            pila_despues = _pila_a_texto(nodo["pila"])
-
-        filas.append([
-            str(i),
-            id_rama,
-            estado,
-            entrada_restante,
-            pila_antes_texto,
-            consumido,
-            tope_texto,
-            destino,
-            reemplazo,
-            pila_despues,
-        ])
-
-        # Separador visual si la salida está truncada.
-        if truncado and paso_idx == 24:
-            filas.append(["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."])
-
-    # Calculamos cada ancho con el contenido real para no recortar información.
+def _imprimir_tabla(encabezados, filas):
     anchos = [len(enc) for enc in encabezados]
     for fila in filas:
         for j, celda in enumerate(fila):
             if len(celda) > anchos[j]:
                 anchos[j] = len(celda)
 
-    # Imprimimos primero el encabezado de la tabla.
     sep = " | "
     linea_enc = sep.join(enc.ljust(anchos[k]) for k, enc in enumerate(encabezados))
     print(linea_enc)
     print("-" * len(linea_enc))
-
-    # Finalmente imprimimos cada configuración seleccionada.
     for fila in filas:
         print(sep.join(celda.ljust(anchos[k]) for k, celda in enumerate(fila)))
 
-# Convierte la tupla de pila a texto con el tope del lado izquierdo.
+
+def _imprimir_recorrido(resultado, ap):
+    print("\n--- RECORRIDO DE EXPLORACIÓN ---")
+    expansiones = [p for p in resultado.pasos if p["tipo"] == "expansion"]
+    seleccion, omitidos = _seleccionar_eventos(expansiones)
+    _avisar_resumen("El recorrido", len(expansiones), omitidos)
+
+    ids_testigo = {nodo["id"] for nodo in resultado.camino_testigo}
+    cadena = resultado.cadena
+    pila_raiz = (ap.simbolo_inicial_pila,)
+    filas = [[
+        "0", "0", "-", "0", ap.estado_inicial,
+        _entrada_restante(cadena, 0), _pila_a_texto(pila_raiz),
+        "-", pila_raiz[0], "-", "-", "-",
+        "TESTIGO" if 0 in ids_testigo else "INICIAL",
+    ]]
+
+    for evento in seleccion:
+        if evento is None:
+            filas.append(["..."] * 13)
+            continue
+        reemplazo = (
+            ";".join(evento["reemplazo"])
+            if evento["reemplazo"] else EPS
+        )
+        filas.append([
+            str(evento["profundidad"]),
+            str(evento["id_hijo"]),
+            str(evento["id_padre"]),
+            str(evento["id_rama"]),
+            evento["estado_origen"],
+            _entrada_restante(cadena, evento["posicion_antes"]),
+            _pila_a_texto(evento["pila_antes"]),
+            evento["entrada"],
+            evento["tope"],
+            evento["destino"],
+            reemplazo,
+            _pila_a_texto(evento["nueva_pila"]),
+            "TESTIGO" if evento["id_hijo"] in ids_testigo else "",
+        ])
+
+    _imprimir_tabla([
+        "Paso", "Nodo", "Padre", "Rama", "Estado", "Entrada restante",
+        "Pila antes", "Consumido", "Tope", "Destino", "Reemplazo",
+        "Pila después", "Marca",
+    ], filas)
+
+    _imprimir_cierres(resultado)
+    _imprimir_podas(resultado)
+
+
+def _motivo_cierre(evento, resultado):
+    tipo = evento["tipo"]
+    posicion = evento["posicion"]
+    entrada_agotada = posicion == len(resultado.cadena)
+
+    if tipo == "rama_muerta_pila_vacia":
+        if entrada_agotada:
+            return "Pila vacía y entrada agotada en estado no final."
+        return "Pila vacía con entrada pendiente."
+
+    if tipo == "rama_muerta_bloqueada":
+        if entrada_agotada:
+            return "Entrada agotada en estado no final."
+        simbolo = resultado.cadena[posicion]
+        return "Sin transición aplicable para entrada {!r}.".format(simbolo)
+
+    if tipo == "ciclo_detectado":
+        return (
+            "Alternativa cerrada por ciclo exacto al usar {} hacia {}.".format(
+                evento["entrada"], evento["destino"]
+            )
+        )
+
+    if tipo == "aceptacion":
+        return "ACEPTACIÓN: entrada consumida en estado final."
+
+    return "PENDIENTE: no se procesó porque otra rama ya aceptó."
+
+
+def _imprimir_cierres(resultado):
+    tipos = {
+        "rama_muerta_pila_vacia",
+        "rama_muerta_bloqueada",
+        "ciclo_detectado",
+        "aceptacion",
+        "rama_pendiente_por_aceptacion",
+    }
+    eventos = [p for p in resultado.pasos if p["tipo"] in tipos]
+    if not eventos:
+        return
+
+    seleccion, omitidos = _seleccionar_eventos(eventos)
+    print("\n--- CIERRE O ESTADO DE RAMAS ---")
+    _avisar_resumen("Los cierres de ramas", len(eventos), omitidos)
+    filas = []
+    for evento in seleccion:
+        if evento is None:
+            filas.append(["..."] * 8)
+            continue
+        filas.append([
+            str(evento.get("profundidad", "-")),
+            str(evento["id_nodo"]),
+            str(evento.get("id_padre", "-")),
+            str(evento.get("id_rama", "-")),
+            evento["estado"],
+            _entrada_restante(resultado.cadena, evento["posicion"]),
+            _pila_a_texto(evento.get("pila")),
+            _motivo_cierre(evento, resultado),
+        ])
+
+    _imprimir_tabla([
+        "Paso", "Nodo", "Padre", "Rama", "Estado", "Entrada restante",
+        "Pila", "Motivo",
+    ], filas)
+
+
+def _imprimir_podas(resultado):
+    eventos = [
+        p for p in resultado.pasos if p["tipo"] == "podada_por_limite"
+    ]
+    if not eventos:
+        return
+
+    seleccion, omitidos = _seleccionar_eventos(eventos)
+    print("\n--- ALTERNATIVAS OMITIDAS POR LÍMITE (NO EJECUTADAS) ---")
+    _avisar_resumen("Las alternativas omitidas", len(eventos), omitidos)
+    filas = []
+    for evento in seleccion:
+        if evento is None:
+            filas.append(["..."] * 11)
+            continue
+        reemplazo = (
+            ";".join(evento["reemplazo"])
+            if evento["reemplazo"] else EPS
+        )
+        filas.append([
+            str(evento["profundidad"]),
+            str(evento["id_padre"]),
+            str(evento["id_rama"]),
+            evento["estado_origen"],
+            _entrada_restante(resultado.cadena, evento["posicion_antes"]),
+            _pila_a_texto(evento["pila_antes"]),
+            evento["entrada"],
+            evento["tope"],
+            evento["destino"],
+            reemplazo,
+            _pila_a_texto(evento["nueva_pila"]),
+        ])
+
+    _imprimir_tabla([
+        "Paso", "Padre", "Rama origen", "Estado", "Entrada restante",
+        "Pila antes", "Entrada", "Tope", "Destino", "Reemplazo",
+        "Pila potencial",
+    ], filas)
+
+
+# Convierte la pila pública o interna a texto con el tope del lado izquierdo.
 def _pila_a_texto(pila):
     if not pila:
         return "vacía"
-    return "[" + ",".join(pila) + "]"
-
-# Recupera los tres datos que necesita la tabla desde el texto de transición.
-def _parsear_trans_desc(descripcion):
-    try:
-        # Partir por " -> "
-        partes = descripcion.split(" -> ")
-        izq = partes[0].strip("() ")
-        der = partes[1].strip("() ")
-        consumido = izq.split(",")[0].strip()
-        destino   = der.split(",")[0].strip()
-        reemplazo = der.split(",")[1].strip()
-        return consumido, destino, reemplazo
-    except Exception:
-        return "?", "?", "?"
-
+    if isinstance(pila, tuple):
+        simbolos = pila
+    else:
+        simbolos = _pila_interna_a_tupla(pila)
+    return "[" + ",".join(simbolos) + "]"
 
 # Evalúa y muestra el resultado en una sola llamada para simplificar el menú.
 def evaluar_y_mostrar(ap, cadena, limite=10000):

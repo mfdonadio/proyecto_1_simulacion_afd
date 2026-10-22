@@ -115,8 +115,8 @@ class AutomataPila:
             return ";".join(reemplazo)
 
         # Construimos la celda con el estado, la columna y el tope de la fila.
-        def texto_celda(q, X):
-            alts = self.obtener_alternativas(q, X, tope_actual)
+        def texto_celda(q, entrada, tope):
+            alts = self.obtener_alternativas(q, entrada, tope)
             if not alts:
                 return "-"
             partes = []
@@ -139,8 +139,7 @@ class AutomataPila:
             max_celda = len(col)
             for q in estados_ord:
                 for X in pila_ord:
-                    tope_actual = X  # variable usada por texto_celda
-                    celda = texto_celda(q, col)
+                    celda = texto_celda(q, col, X)
                     if len(celda) > max_celda:
                         max_celda = len(celda)
             anchos_col[col] = max_celda + 2
@@ -157,10 +156,9 @@ class AutomataPila:
         # Después imprimimos una fila por cada pareja de estado y tope.
         for q in estados_ord:
             for X in pila_ord:
-                tope_actual = X  # variable para texto_celda
                 etiqueta = "({}, {})".format(q, X)
                 fila = etiqueta.ljust(ancho_fila)
                 for col in columnas:
-                    celda = texto_celda(q, col)
+                    celda = texto_celda(q, col, X)
                     fila += celda.ljust(anchos_col[col])
                 print(fila)

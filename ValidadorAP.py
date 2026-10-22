@@ -53,6 +53,25 @@ def validar(ap):
             "'{}' está reservado y no puede aparecer en Γ.".format(EPS)
         )
 
+    # La entrada se recorre carácter por carácter. Por eso cada elemento de Σ
+    # debe ser una cadena con exactamente un carácter; Γ conserva tokens como Z0.
+    simbolos_entrada_invalidos = [
+        simbolo
+        for simbolo in ap.alfabeto
+        if simbolo != EPS
+        and (not isinstance(simbolo, str) or len(simbolo) != 1)
+    ]
+    if simbolos_entrada_invalidos:
+        errores.append(
+            "Cada símbolo de Σ debe ser una cadena de exactamente un carácter; "
+            "se encontró: {}.".format(
+                ", ".join(
+                    repr(simbolo)
+                    for simbolo in sorted(simbolos_entrada_invalidos, key=repr)
+                )
+            )
+        )
+
     # Ahora validamos el origen, la entrada, el tope y cada alternativa de δ.
     for (origen, entrada, tope), alternativas in ap.transiciones.items():
         prefijo = "Transición ({}, {}, {}):".format(origen, entrada, tope)
